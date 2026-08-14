@@ -13,8 +13,3 @@ pub fn getConnection(allocator: std.mem.Allocator, io: std.Io) !*fr.Session {
     connection = try fr.Session.open(fr.SQLite3, allocator, io, .{ .filename = DATABASE_NAME });
     return &connection.?;
 }
-
-pub fn deinit() void {
-    var conn = connection orelse return;
-    conn.deinit();
-}

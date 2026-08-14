@@ -4,27 +4,34 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
-    const lib = b.addLibrary(.{
-        .name = "playday-api",
-        .linkage = .static,
-        .root_module = b.createModule(.{
-            .root_source_file = b.path("src/root.zig"),
-            .target = target,
-            .optimize = optimize,
-        }),
+    const http = b.addModule("http", .{
+        .root_source_file = b.path("src/http/root.zig"),
     });
 
-    b.installArtifact(lib);
+    const sqlite = b.dependency("fridge", .{ .bundle = true });
 
     // Use .bundle = false if you want to link system SQLite3
     const models = b.addModule("models", .{
         .root_source_file = b.path("src/models/root.zig"),
+        .imports = &.{
+            .{ .name = "fridge", .module = sqlite.module("fridge") },
+        },
     });
 
-    const sqlite = b.dependency("fridge", .{ .bundle = true });
-    models.addImport("fridge", sqlite.module("fridge"));
+    const steam = b.addModule("steam", .{
+        .root_source_file = b.path("src/libraries/steam/root.zig"),
+        .imports = &.{
+            .{ .name = "http", .module = http },
+            .{ .name = "models", .module = models },
+        },
+    });
 
-    lib.root_module.addImport("models", models);
+    const libraries = b.addModule("libraries", .{
+        .root_source_file = b.path("src/libraries/root.zig"),
+        .imports = &.{
+            .{ .name = "steam", .module = steam },
+        },
+    });
 
     _ = b.addModule("playday-api", .{
         .root_source_file = b.path("src/root.zig"),
@@ -32,6 +39,8 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
         .imports = &.{
             .{ .name = "models", .module = models },
+            .{ .name = "http", .module = http },
+            .{ .name = "libraries", .module = libraries },
         },
     });
 }

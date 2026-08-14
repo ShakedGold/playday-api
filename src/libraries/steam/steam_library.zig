@@ -4,18 +4,22 @@ const steam_web_api = @import("steam_web_api.zig");
 
 pub const SteamLibrary = struct {
     steamAPI: *steam_web_api.SteamAPI,
-    allocator: std.mem.Allocator,
 
-    pub fn getGames(self: *SteamLibrary) !std.ArrayList(models.game.Game) {
-        const apiGamesList = try self.steamAPI.*.getOwnedGames();
+    pub fn getGames(self: *SteamLibrary, allocator: std.mem.Allocator) !std.ArrayList(models.game.Game) {
+        var apiGamesList = try self.steamAPI.*.getOwnedGames();
+        defer apiGamesList.deinit();
 
-        var games: std.ArrayList(models.game.Game) = try .initCapacity(self.allocator, apiGamesList.capacity);
-        var buffer: [256]u8 = undefined;
+        var games: std.ArrayList(models.game.Game) = try .initCapacity(allocator, apiGamesList.games.len);
 
-        for (apiGamesList.items) |apiGame| {
-            const appId = try std.fmt.bufPrint(&buffer, "{d}", .{apiGame.appid});
-            const currentGame: models.game.Game = .{ .name = apiGame.name, .id = appId };
-            try games.append(self.allocator, currentGame);
+        for (apiGamesList.games) |*apiGame| {
+            const currentGame: models.game.Game = .{
+                .id = try std.fmt.allocPrint(allocator, "{d}", .{apiGame.appid}),
+                .name = try allocator.dupe(u8, apiGame.name),
+                .playtime = apiGame.playtime_forever,
+                .icon = &[0]u8{}, // It is possible to fetch the icon using `apiGame.fetchIcon`
+            };
+
+            try games.append(allocator, currentGame);
         }
 
         return games;
