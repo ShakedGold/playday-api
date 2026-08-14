@@ -1,15 +1,24 @@
 const std = @import("std");
 const http = @import("http");
 
+const log = std.log.scoped(.steam_web_api);
+
 const APIGame = struct {
     appid: u32,
     name: []const u8,
     playtime_forever: u32,
     img_icon_url: []const u8,
 
-    pub fn fetchIcon(self: *APIGame, client: *http.client.Client) ![]u8 {
-        const response = try client.get("https://media.steampowered.com/steamcommunity/public/images/apps/{d}/{s}.jpg", .{ self.appid, self.img_icon_url });
-        return response.body;
+    pub fn fetchIcon(self: *APIGame, client: *http.client.Client, allocator: std.mem.Allocator) !?[]u8 {
+        log.debug("Fetching: {s} https://media.steampowered.com/steamcommunity/public/images/apps/{d}/{s}.jpg", .{ self.name, self.appid, self.img_icon_url });
+        var response = try client.get("https://media.steampowered.com/steamcommunity/public/images/apps/{d}/{s}.jpg", .{ self.appid, self.img_icon_url });
+        defer response.deinit();
+
+        if (response.status != .ok) {
+            return null;
+        }
+
+        return try allocator.dupe(u8, response.body);
     }
 };
 

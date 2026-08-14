@@ -9,7 +9,8 @@ pub const Game = @This();
 id: []u8,
 name: []u8,
 playtime: u32,
-icon: []const u8,
+icon: ?[]const u8 = null,
+is_installed: bool = false,
 
 fn createGamesTable(connection: *fr.Session) !void {
     try connection.conn.execAll(
@@ -17,6 +18,7 @@ fn createGamesTable(connection: *fr.Session) !void {
         \\  id TEXT PRIMARY KEY,
         \\  name TEXT NOT NULL,
         \\  playtime INTEGER NOT NULL,
+        \\  is_installed BOOLEAN NOT NULL,
         \\  icon BLOB
         \\);
     );
@@ -43,7 +45,8 @@ pub fn getGames(allocator: std.mem.Allocator, io: std.Io) !std.ArrayList(Game) {
         try gamesList.append(allocator, .{
             .id = try allocator.dupe(u8, game.id),
             .name = try allocator.dupe(u8, game.name),
-            .icon = try allocator.dupe(u8, game.icon),
+            .icon = if (game.icon != null) try allocator.dupe(u8, game.icon.?) else null,
+            .is_installed = game.is_installed,
             .playtime = game.playtime,
         });
     }
@@ -61,5 +64,8 @@ pub fn insert(self: *Game, io: std.Io, allocator: std.mem.Allocator) !void {
 pub fn deinit(self: *const Game, allocator: std.mem.Allocator) void {
     allocator.free(self.id);
     allocator.free(self.name);
-    allocator.free(self.icon);
+
+    if (self.icon != null) {
+        allocator.free(self.icon.?);
+    }
 }

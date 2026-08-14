@@ -4,6 +4,8 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
+    const playday_vdf = b.dependency("playday_vdf", .{});
+
     const http = b.addModule("http", .{
         .root_source_file = b.path("src/http/root.zig"),
     });
@@ -23,6 +25,7 @@ pub fn build(b: *std.Build) void {
         .imports = &.{
             .{ .name = "http", .module = http },
             .{ .name = "models", .module = models },
+            .{ .name = "playday_vdf", .module = playday_vdf.module("playday_vdf") },
         },
     });
 
@@ -41,6 +44,7 @@ pub fn build(b: *std.Build) void {
             .{ .name = "models", .module = models },
             .{ .name = "http", .module = http },
             .{ .name = "libraries", .module = libraries },
+            .{ .name = "playday_vdf", .module = playday_vdf.module("playday_vdf") },
         },
     });
 }

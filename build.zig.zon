@@ -36,6 +36,9 @@
             .url = "git+https://github.com/cztomsik/fridge#7f4bb623af841305156d0e70a59bff2e1476bb74",
             .hash = "fridge-0.9.5-3GyIimrGAQCY404B3oeRFFxV20lwVY_hWiWlTMhMsXR8",
         },
+        .playday_vdf = .{
+            .path = "../vdf",
+        },
     },
     .paths = .{
         "build.zig",
