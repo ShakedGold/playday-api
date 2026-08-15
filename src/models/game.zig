@@ -10,7 +10,7 @@ id: []u8,
 name: []u8,
 playtime: u32,
 icon: ?[]const u8 = null,
-is_installed: bool = false,
+installed_location: ?[]u8 = null,
 
 fn createGamesTable(connection: *fr.Session) !void {
     try connection.conn.execAll(
@@ -18,7 +18,7 @@ fn createGamesTable(connection: *fr.Session) !void {
         \\  id TEXT PRIMARY KEY,
         \\  name TEXT NOT NULL,
         \\  playtime INTEGER NOT NULL,
-        \\  is_installed BOOLEAN NOT NULL,
+        \\  installed_location TEXT,
         \\  icon BLOB
         \\);
     );
@@ -28,7 +28,7 @@ pub fn getGames(allocator: std.mem.Allocator, io: std.Io) !std.ArrayList(Game) {
     const connection = try db.getConnection(allocator, io);
     defer connection.deinit();
 
-    const games = connection.query(Game).findAll() catch |err| switch (err) {
+    const games: []const Game = connection.query(Game).findAll() catch |err| switch (err) {
         error.DbError => {
             log.debug("Failed to lookup the games, table does not exist", .{});
             log.debug("Creating the games table", .{});
@@ -45,8 +45,8 @@ pub fn getGames(allocator: std.mem.Allocator, io: std.Io) !std.ArrayList(Game) {
         try gamesList.append(allocator, .{
             .id = try allocator.dupe(u8, game.id),
             .name = try allocator.dupe(u8, game.name),
+            .installed_location = if (game.installed_location != null) try allocator.dupe(u8, game.installed_location.?) else null,
             .icon = if (game.icon != null) try allocator.dupe(u8, game.icon.?) else null,
-            .is_installed = game.is_installed,
             .playtime = game.playtime,
         });
     }
@@ -67,5 +67,9 @@ pub fn deinit(self: *const Game, allocator: std.mem.Allocator) void {
 
     if (self.icon != null) {
         allocator.free(self.icon.?);
+    }
+
+    if (self.installed_location != null) {
+        allocator.free(self.installed_location.?);
     }
 }
