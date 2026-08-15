@@ -3,7 +3,7 @@ const http = @import("http");
 
 const log = std.log.scoped(.steam_web_api);
 
-const APIGame = struct {
+pub const APIGame = struct {
     appid: u32,
     name: []const u8,
     playtime_forever: u32,
