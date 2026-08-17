@@ -18,7 +18,6 @@ pub fn init(io: std.Io, allocator: std.mem.Allocator) Client {
 
 /// The response needs to be `.deinit()` by the caller
 pub fn fetch(self: *Client, method: std.http.Method, comptime format: []const u8, args: anytype) !response.Response {
-    var redirect_buffer: [1024]u8 = undefined;
     var body = std.Io.Writer.Allocating.init(self.allocator);
     defer body.deinit();
 
@@ -30,7 +29,6 @@ pub fn fetch(self: *Client, method: std.http.Method, comptime format: []const u8
     const clientResponse = try self.client.fetch(.{
         .method = method,
         .location = .{ .uri = uri },
-        .redirect_buffer = &redirect_buffer,
         .response_writer = &body.writer,
     });
     try body.writer.flush();

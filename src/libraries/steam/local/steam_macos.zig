@@ -1,12 +1,11 @@
 const std = @import("std");
 const models = @import("models");
-
-const log = std.log.scoped(.steam_linux);
+const log = std.log.scoped(.steam_macos);
 
 /// The caller is reponsible to deallocate the path they receive
 fn getSteamInstallationDir(io: std.Io, allocator: std.mem.Allocator, environment: *std.process.Environ.Map) !std.Io.Dir {
     const home_dir = environment.get("HOME") orelse return error.HomeDoesNotExist;
-    const paths = [_][]const u8{ home_dir, ".steam", "steam" };
+    const paths = [_][]const u8{ home_dir, "Library", "Application Support", "Steam" };
 
     const steam_path = try std.fs.path.join(allocator, &paths);
     defer allocator.free(steam_path);
@@ -74,14 +73,14 @@ pub const SteamLocal = struct {
     pub fn run(self: *SteamLocal, game: *const models.game.Game) !void {
         const game_url = try std.fmt.allocPrint(
             self.allocator,
-            "steam://rungameid/{s}",
+            "steam://run/{s}",
             .{game.id},
         );
         defer self.allocator.free(game_url);
 
         var child = try std.process.spawn(self.io, .{
             .argv = &.{
-                "steam",
+                "open",
                 game_url,
             },
             .stderr = .ignore,

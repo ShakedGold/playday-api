@@ -2,12 +2,14 @@ const std = @import("std");
 const builtin = @import("builtin");
 
 const playday_vdf = @import("playday_vdf");
+const dbModels = @import("models");
 const models = @import("./models.zig");
 
 const native_os = builtin.target.os.tag;
 
 const Platform = switch (builtin.target.os.tag) {
     .linux => @import("steam_linux.zig").SteamLocal,
+    .macos => @import("steam_macos.zig").SteamLocal,
     else => @compileError("Unsupported OS"),
 };
 
@@ -59,5 +61,9 @@ pub const SteamLocal = struct {
         }
 
         return error.GameNotFound;
+    }
+
+    pub fn run(self: *SteamLocal, game: *const dbModels.game.Game) !void {
+        return self.platform.run(game);
     }
 };

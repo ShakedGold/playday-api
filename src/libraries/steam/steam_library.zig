@@ -13,17 +13,32 @@ pub const SteamLibrary = struct {
         var installedGame, const path = self.steamLocal.getInstalledGame(apiGame.appid) catch .{ null, null };
         defer if (installedGame != null) installedGame.?.deinit();
 
+        const id = try std.fmt.allocPrint(allocator, "{d}", .{apiGame.appid});
+        errdefer allocator.free(id);
+
+        const name = try allocator.dupe(u8, apiGame.name);
+        errdefer allocator.free(name);
+
+        const icon = try apiGame.fetchIcon(&self.steamAPI.client, allocator);
+        errdefer if (icon != null) allocator.free(icon.?);
+
+        var installedLocation: ?[]u8 = null;
+        if (path != null) {
+            installedLocation = try installedGame.?.value.getInstallFullPath(allocator, path.?);
+        }
+        errdefer if (installedLocation != null) allocator.free(installedLocation);
+
         return .{
-            .id = try std.fmt.allocPrint(allocator, "{d}", .{apiGame.appid}),
-            .name = try allocator.dupe(u8, apiGame.name),
+            .id = id,
+            .name = name,
             .playtime = apiGame.playtime_forever,
-            .icon = try apiGame.fetchIcon(&self.steamAPI.client, allocator),
-            .installed_location = if (installedGame != null and path != null) try installedGame.?.value.getInstallFullPath(allocator, path.?) else null,
+            .icon = icon,
+            .installed_location = if (installedGame != null and path != null) installedLocation else null,
         };
     }
 
     fn getGameTask(self: *SteamLibrary, apiGame: *steam_web_api.APIGame, allocator: std.mem.Allocator, result: *?models.game.Game) void {
-        result.* = self.getGame(apiGame, allocator) catch return;
+        result.* = self.getGame(apiGame, allocator) catch null;
     }
 
     pub fn getGames(self: *SteamLibrary, io: std.Io, allocator: std.mem.Allocator) ![]?models.game.Game {
@@ -33,15 +48,22 @@ pub const SteamLibrary = struct {
         log.info("Received: {d} games", .{apiGamesList.games.len});
         var games = try allocator.alloc(?models.game.Game, apiGamesList.games.len);
 
-        var gameGroup: std.Io.Group = .init;
-        defer gameGroup.cancel(io);
+        const concurrency_limit = 25;
+        var i: usize = 0;
+        while (i < apiGamesList.games.len) {
+            const end = @min(i + concurrency_limit, apiGamesList.games.len);
+            var gameGroup: std.Io.Group = .init;
+            errdefer gameGroup.cancel(io);
 
-        for (apiGamesList.games, 0..) |*apiGame, index| {
-            log.info("Creating the game model: {s}, appid: {d}", .{ apiGame.name, apiGame.appid });
-            try gameGroup.concurrent(io, getGameTask, .{ self, apiGame, allocator, &games[index] });
+            var j = i;
+            while (j < end) : (j += 1) {
+                log.info("Creating the game model: {s}, appid: {d}", .{ apiGamesList.games[j].name, apiGamesList.games[j].appid });
+                try gameGroup.concurrent(io, getGameTask, .{ self, &apiGamesList.games[j], allocator, &games[j] });
+            }
+
+            try gameGroup.await(io);
+            i = end;
         }
-
-        try gameGroup.await(io);
 
         return games;
     }

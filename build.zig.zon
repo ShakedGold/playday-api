@@ -37,7 +37,7 @@
             .hash = "fridge-0.9.5-3GyIimrGAQCY404B3oeRFFxV20lwVY_hWiWlTMhMsXR8",
         },
         .playday_vdf = .{
-            .path = "../vdf",
+            .path = "../playday-vdf",
         },
     },
     .paths = .{
