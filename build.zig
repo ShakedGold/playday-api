@@ -36,7 +36,7 @@ pub fn build(b: *std.Build) void {
         },
     });
 
-    _ = b.addModule("playday-api", .{
+    const playday_api_mod = b.addModule("playday-api", .{
         .root_source_file = b.path("src/root.zig"),
         .target = target,
         .optimize = optimize,
@@ -47,4 +47,11 @@ pub fn build(b: *std.Build) void {
             .{ .name = "playday_vdf", .module = playday_vdf.module("playday_vdf") },
         },
     });
+
+    const lib = b.addLibrary(.{
+        .name = "playday-api",
+        .linkage = .static,
+        .root_module = playday_api_mod,
+    });
+    b.installArtifact(lib);
 }
