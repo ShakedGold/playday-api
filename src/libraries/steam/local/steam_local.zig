@@ -1,27 +1,29 @@
 const std = @import("std");
 const builtin = @import("builtin");
-
-const playday_vdf = @import("playday_vdf");
-const dbModels = @import("models");
-const models = @import("./models.zig");
-
 const native_os = builtin.target.os.tag;
 
-const Platform = switch (builtin.target.os.tag) {
-    .linux => @import("steam_linux.zig").SteamLocal,
-    .macos => @import("steam_macos.zig").SteamLocal,
+const dbModels = @import("models");
+const playday_vdf = @import("playday_vdf");
+
+const models = @import("./models.zig");
+
+pub const SteamLocalType = switch (builtin.target.os.tag) {
+    .linux => @import("steam_linux.zig"),
+    .macos => @import("steam_macos.zig"),
     else => @compileError("Unsupported OS"),
 };
 
+pub const SteamPlatform = SteamLocalType.SteamLocal;
+
 pub const SteamLocal = struct {
-    platform: Platform,
+    platform: SteamPlatform,
     io: std.Io,
     allocator: std.mem.Allocator,
     libraryFolders: playday_vdf.Parsed(models.LibraryFolders) = undefined,
 
     pub fn init(io: std.Io, allocator: std.mem.Allocator, environ_map: *std.process.Environ.Map) !SteamLocal {
         var local: SteamLocal = .{
-            .platform = try Platform.init(io, allocator, environ_map),
+            .platform = try SteamPlatform.init(io, allocator, environ_map),
             .io = io,
             .allocator = allocator,
         };

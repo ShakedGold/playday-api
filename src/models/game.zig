@@ -1,6 +1,9 @@
 const std = @import("std");
-const db = @import("db.zig");
+
 const fr = @import("fridge");
+const libraries = @import("libraries");
+
+const db = @import("db.zig");
 
 const log = std.log.scoped(.game);
 
@@ -10,6 +13,7 @@ id: []u8,
 name: []u8,
 playtime: u32,
 installed_location: ?[]u8 = null,
+library: std.meta.Tag(libraries.library.Library),
 
 fn createGamesTable(connection: *fr.Session) !void {
     try connection.conn.execAll(
@@ -17,7 +21,8 @@ fn createGamesTable(connection: *fr.Session) !void {
         \\  id TEXT PRIMARY KEY,
         \\  name TEXT NOT NULL,
         \\  playtime INTEGER NOT NULL,
-        \\  installed_location TEXT
+        \\  installed_location TEXT,
+        \\  library INTEGER NOT NULL
         \\ );
     );
 }
@@ -45,6 +50,7 @@ pub fn getGames(allocator: std.mem.Allocator, io: std.Io) !std.ArrayList(Game) {
             .name = try allocator.dupe(u8, game.name),
             .installed_location = if (game.installed_location != null) try allocator.dupe(u8, game.installed_location.?) else null,
             .playtime = game.playtime,
+            .library = game.library,
         });
     }
 

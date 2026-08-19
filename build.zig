@@ -20,20 +20,11 @@ pub fn build(b: *std.Build) void {
         },
     });
 
-    const metadata = b.addModule("metadata", .{
-        .root_source_file = b.path("src/metadata/root.zig"),
-        .imports = &.{
-            .{ .name = "http", .module = http },
-            .{ .name = "models", .module = models },
-        },
-    });
-
     const steam = b.addModule("steam", .{
         .root_source_file = b.path("src/libraries/steam/root.zig"),
         .imports = &.{
             .{ .name = "http", .module = http },
             .{ .name = "models", .module = models },
-            .{ .name = "metadata", .module = metadata },
             .{ .name = "playday_vdf", .module = playday_vdf.module("playday_vdf") },
         },
     });
@@ -42,8 +33,11 @@ pub fn build(b: *std.Build) void {
         .root_source_file = b.path("src/libraries/root.zig"),
         .imports = &.{
             .{ .name = "steam", .module = steam },
+            .{ .name = "models", .module = models },
         },
     });
+
+    models.addImport("libraries", libraries);
 
     const playday_api_mod = b.addModule("playday-api", .{
         .root_source_file = b.path("src/root.zig"),
@@ -53,7 +47,6 @@ pub fn build(b: *std.Build) void {
             .{ .name = "models", .module = models },
             .{ .name = "http", .module = http },
             .{ .name = "libraries", .module = libraries },
-            .{ .name = "metadata", .module = metadata },
             .{ .name = "playday_vdf", .module = playday_vdf.module("playday_vdf") },
         },
     });

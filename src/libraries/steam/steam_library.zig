@@ -1,14 +1,31 @@
 const std = @import("std");
-const models = @import("models");
-const steam_web_api = @import("steam_web_api.zig");
-const steam_local = @import("local/steam_local.zig");
+
 const metadata = @import("metadata");
+const models = @import("models");
+
+const steam_local = @import("local/steam_local.zig");
+const steam_web_api = @import("steam_web_api.zig");
 
 const log = std.log.scoped(.steam_library);
 
 pub const SteamLibrary = struct {
     steamAPI: *steam_web_api.SteamAPI,
     steamLocal: *steam_local.SteamLocal,
+
+    pub fn init(steamAPI: *steam_web_api.SteamAPI, steamLocal: *steam_local.SteamLocal) SteamLibrary {
+        return .{
+            .steamAPI = steamAPI,
+            .steamLocal = steamLocal,
+        };
+    }
+
+    pub fn deinit(self: *SteamLibrary) void {
+        self.steamAPI.deinit();
+        self.steamAPI.* = undefined;
+
+        self.steamLocal.deinit();
+        self.steamLocal.* = undefined;
+    }
 
     fn getGame(self: *SteamLibrary, apiGame: *steam_web_api.APIGame, allocator: std.mem.Allocator) !models.game.Game {
         var installedGame, const path = self.steamLocal.getInstalledGame(apiGame.appid) catch .{ null, null };
@@ -31,6 +48,7 @@ pub const SteamLibrary = struct {
             .name = name,
             .playtime = apiGame.playtime_forever,
             .installed_location = if (installedGame != null and path != null) installedLocation else null,
+            .library = .steam,
         };
     }
 
@@ -39,7 +57,7 @@ pub const SteamLibrary = struct {
     }
 
     pub fn getGames(self: *SteamLibrary, io: std.Io, allocator: std.mem.Allocator) ![]?models.game.Game {
-        var apiGamesList = try self.steamAPI.*.getOwnedGames();
+        var apiGamesList = try self.steamAPI.getOwnedGames();
         defer apiGamesList.deinit();
 
         log.info("Received: {d} games", .{apiGamesList.games.len});
@@ -63,5 +81,9 @@ pub const SteamLibrary = struct {
         }
 
         return games;
+    }
+
+    pub fn run(self: *const SteamLibrary, game: *const models.game.Game) !void {
+        try self.steamLocal.run(game);
     }
 };

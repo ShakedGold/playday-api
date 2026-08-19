@@ -1,4 +1,5 @@
 const std = @import("std");
+
 const models = @import("models");
 
 const log = std.log.scoped(.steam_linux);
@@ -70,25 +71,25 @@ pub const SteamLocal = struct {
 
         return fileBuffer;
     }
-
-    pub fn run(self: *SteamLocal, game: *const models.game.Game) !void {
-        const game_url = try std.fmt.allocPrint(
-            self.allocator,
-            "steam://rungameid/{s}",
-            .{game.id},
-        );
-        defer self.allocator.free(game_url);
-
-        var child = try std.process.spawn(self.io, .{
-            .argv = &.{
-                "steam",
-                game_url,
-            },
-            .stderr = .ignore,
-            .stdin = .ignore,
-            .stdout = .ignore,
-        });
-
-        _ = try child.wait(self.io);
-    }
 };
+
+pub fn run(io: std.Io, allocator: std.mem.Allocator, game: *const models.game.Game) !void {
+    const game_url = try std.fmt.allocPrint(
+        allocator,
+        "steam://rungameid/{s}",
+        .{game.id},
+    );
+    defer allocator.free(game_url);
+
+    var child = try std.process.spawn(io, .{
+        .argv = &.{
+            "steam",
+            game_url,
+        },
+        .stderr = .ignore,
+        .stdin = .ignore,
+        .stdout = .ignore,
+    });
+
+    _ = try child.wait(io);
+}
