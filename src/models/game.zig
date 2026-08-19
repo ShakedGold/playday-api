@@ -9,24 +9,22 @@ pub const Game = @This();
 id: []u8,
 name: []u8,
 playtime: u32,
-icon: ?[]const u8 = null,
 installed_location: ?[]u8 = null,
 
 fn createGamesTable(connection: *fr.Session) !void {
     try connection.conn.execAll(
-        \\ CREATE TABLE Game(
+        \\ CREATE TABLE game(
         \\  id TEXT PRIMARY KEY,
         \\  name TEXT NOT NULL,
         \\  playtime INTEGER NOT NULL,
-        \\  installed_location TEXT,
-        \\  icon BLOB
-        \\);
+        \\  installed_location TEXT
+        \\ );
     );
 }
 
 pub fn getGames(allocator: std.mem.Allocator, io: std.Io) !std.ArrayList(Game) {
     const connection = try db.getConnection(allocator, io);
-    defer connection.deinit();
+    defer db.deinit(connection, allocator);
 
     const games: []const Game = connection.query(Game).findAll() catch |err| switch (err) {
         error.DbError => {
@@ -46,7 +44,6 @@ pub fn getGames(allocator: std.mem.Allocator, io: std.Io) !std.ArrayList(Game) {
             .id = try allocator.dupe(u8, game.id),
             .name = try allocator.dupe(u8, game.name),
             .installed_location = if (game.installed_location != null) try allocator.dupe(u8, game.installed_location.?) else null,
-            .icon = if (game.icon != null) try allocator.dupe(u8, game.icon.?) else null,
             .playtime = game.playtime,
         });
     }
@@ -55,21 +52,15 @@ pub fn getGames(allocator: std.mem.Allocator, io: std.Io) !std.ArrayList(Game) {
 }
 
 pub fn insert(self: *Game, io: std.Io, allocator: std.mem.Allocator) !void {
-    var connection = try fr.Session.open(fr.SQLite3, allocator, io, .{ .filename = "playday.db" });
-    defer connection.deinit();
+    var connection = try db.getConnection(allocator, io);
+    defer db.deinit(connection, allocator);
 
     _ = try connection.insert(Game, self.*);
 }
 
-pub fn deinit(self: *const Game, allocator: std.mem.Allocator) void {
+pub fn deinit(self: *Game, allocator: std.mem.Allocator) void {
     allocator.free(self.id);
     allocator.free(self.name);
 
-    if (self.icon != null) {
-        allocator.free(self.icon.?);
-    }
-
-    if (self.installed_location != null) {
-        allocator.free(self.installed_location.?);
-    }
+    if (self.installed_location != null) allocator.free(self.installed_location.?);
 }

@@ -3,13 +3,15 @@ const fr = @import("fridge");
 
 const DATABASE_NAME = "playday.db";
 
-var connection: ?fr.Session = null;
-
 pub fn getConnection(allocator: std.mem.Allocator, io: std.Io) !*fr.Session {
-    if (connection != null) {
-        return &connection.?;
-    }
+    const session = try allocator.create(fr.Session);
 
-    connection = try fr.Session.open(fr.SQLite3, allocator, io, .{ .filename = DATABASE_NAME });
-    return &connection.?;
+    session.* = try fr.Session.open(fr.SQLite3, allocator, io, .{ .filename = DATABASE_NAME });
+    return session;
+}
+
+pub fn deinit(session: *fr.Session, allocator: std.mem.Allocator) void {
+    session.deinit();
+
+    allocator.destroy(session);
 }

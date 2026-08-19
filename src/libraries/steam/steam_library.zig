@@ -2,6 +2,7 @@ const std = @import("std");
 const models = @import("models");
 const steam_web_api = @import("steam_web_api.zig");
 const steam_local = @import("local/steam_local.zig");
+const metadata = @import("metadata");
 
 const log = std.log.scoped(.steam_library);
 
@@ -19,9 +20,6 @@ pub const SteamLibrary = struct {
         const name = try allocator.dupe(u8, apiGame.name);
         errdefer allocator.free(name);
 
-        const icon = try apiGame.fetchIcon(&self.steamAPI.client, allocator);
-        errdefer if (icon != null) allocator.free(icon.?);
-
         var installedLocation: ?[]u8 = null;
         if (path != null) {
             installedLocation = try installedGame.?.value.getInstallFullPath(allocator, path.?);
@@ -32,7 +30,6 @@ pub const SteamLibrary = struct {
             .id = id,
             .name = name,
             .playtime = apiGame.playtime_forever,
-            .icon = icon,
             .installed_location = if (installedGame != null and path != null) installedLocation else null,
         };
     }
