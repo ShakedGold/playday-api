@@ -2,6 +2,8 @@ const std = @import("std");
 
 const response = @import("response.zig");
 
+const log = std.log.scoped(.http_client);
+
 pub const Client = @This();
 
 client: std.http.Client,
@@ -18,6 +20,8 @@ pub fn init(io: std.Io, allocator: std.mem.Allocator) Client {
 
 /// The response needs to be `.deinit()` by the caller
 pub fn fetch(self: *Client, method: std.http.Method, comptime format: []const u8, args: anytype) !response.Response {
+    log.debug("Fetching: " ++ format, args);
+
     var body = std.Io.Writer.Allocating.init(self.allocator);
     defer body.deinit();
 

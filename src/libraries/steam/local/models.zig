@@ -11,6 +11,7 @@ pub const LibraryFolders = struct {
 const AppState = struct {
     appid: u32,
     installdir: []const u8,
+    LastPlayed: u64,
 };
 
 pub const AppManifest = struct {

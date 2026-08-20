@@ -4,6 +4,10 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
+    const utils = b.addModule("utils", .{
+        .root_source_file = b.path("src/utils/root.zig"),
+    });
+
     const playday_vdf = b.dependency("playday_vdf", .{});
 
     const http = b.addModule("http", .{
@@ -23,6 +27,7 @@ pub fn build(b: *std.Build) void {
     const steam = b.addModule("steam", .{
         .root_source_file = b.path("src/libraries/steam/root.zig"),
         .imports = &.{
+            .{ .name = "utils", .module = utils },
             .{ .name = "http", .module = http },
             .{ .name = "models", .module = models },
             .{ .name = "playday_vdf", .module = playday_vdf.module("playday_vdf") },
@@ -39,6 +44,14 @@ pub fn build(b: *std.Build) void {
 
     models.addImport("libraries", libraries);
 
+    const metadata = b.addModule("metadata", .{
+        .root_source_file = b.path("src/metadata/root.zig"),
+        .imports = &.{
+            .{ .name = "models", .module = models },
+            .{ .name = "http", .module = http },
+        },
+    });
+
     const playday_api_mod = b.addModule("playday-api", .{
         .root_source_file = b.path("src/root.zig"),
         .target = target,
@@ -47,6 +60,8 @@ pub fn build(b: *std.Build) void {
             .{ .name = "models", .module = models },
             .{ .name = "http", .module = http },
             .{ .name = "libraries", .module = libraries },
+            .{ .name = "metadata", .module = metadata },
+            .{ .name = "utils", .module = utils },
             .{ .name = "playday_vdf", .module = playday_vdf.module("playday_vdf") },
         },
     });

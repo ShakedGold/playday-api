@@ -1,8 +1,43 @@
 const std = @import("std");
 
+const http = @import("http");
 const models = @import("models");
 
 const SteamStoreProvider = @import("steam_store.zig");
+
+pub const MetadataRefresher = struct {
+    game: *models.game.Game,
+    allocator: std.mem.Allocator,
+    io: std.Io,
+    client: *http.client.Client,
+    this: *anyopaque,
+
+    refreshLogoFn: *const fn (self: *anyopaque) error{ RequestFailed, NotSupported, NotFound }!void,
+    refreshHeroFn: *const fn (self: *anyopaque) error{ RequestFailed, NotSupported, NotFound }!void,
+    refreshGridFn: *const fn (self: *anyopaque) error{ RequestFailed, NotSupported, NotFound }!void,
+    refreshIconFn: *const fn (self: *anyopaque) error{ RequestFailed, NotSupported, NotFound }!void,
+    refreshDescriptionFn: *const fn (self: *anyopaque) error{ RequestFailed, NotSupported, NotFound }!void,
+    deinitFn: *const fn (self: *anyopaque) void,
+
+    pub fn refreshLogo(self: *MetadataRefresher) !void {
+        try self.refreshLogoFn(self.this);
+    }
+    pub fn refreshHero(self: *MetadataRefresher) !void {
+        try self.refreshHeroFn(self.this);
+    }
+    pub fn refreshGrid(self: *MetadataRefresher) !void {
+        try self.refreshGridFn(self.this);
+    }
+    pub fn refreshIcon(self: *MetadataRefresher) !void {
+        try self.refreshIconFn(self.this);
+    }
+    pub fn refreshDescription(self: *MetadataRefresher) !void {
+        try self.refreshDescriptionFn(self.this);
+    }
+    pub fn deinit(self: *MetadataRefresher) void {
+        self.deinitFn(self.this);
+    }
+};
 
 pub const MetadataProvider = union(enum) {
     steam_store: SteamStoreProvider,
@@ -34,14 +69,14 @@ pub const MetadataProvider = union(enum) {
         };
     }
 
-    pub fn getMetadata(
+    pub fn refresher(
         self: *MetadataProvider,
-        id: []u8,
-    ) !models.extra_metadata.ExtraGameMetadata {
+        game: *models.game.Game,
+        io: std.Io,
+        allocator: std.mem.Allocator,
+    ) MetadataRefresher {
         return switch (self.*) {
-            inline else => |*tag| {
-                return tag.getMetadata(id);
-            },
+            inline else => |*provider| provider.Refresher(game, io, allocator),
         };
     }
 };

@@ -48,7 +48,7 @@ pub const SteamLocal = struct {
         return playday_vdf.parseFromSlice(models.LibraryFolders, self.allocator, libraryFoldersContent, .{});
     }
 
-    pub fn getInstalledGame(self: *SteamLocal, appid: u32) !struct { playday_vdf.Parsed(models.AppManifest), []const u8 } {
+    pub fn getInstalledGame(self: *SteamLocal, appid: u32) !struct { app_manifest: playday_vdf.Parsed(models.AppManifest), path: []const u8 } {
         var iterator = self.libraryFolders.value.libraryfolders.iterator();
         while (iterator.next()) |entry| {
             const acf = self.platform.getAppACF(entry.value_ptr.path, appid) catch |err| switch (err) {
@@ -59,7 +59,7 @@ pub const SteamLocal = struct {
             defer self.allocator.free(acf);
 
             const parsedAppManifest = try playday_vdf.parseFromSlice(models.AppManifest, self.allocator, acf, .{});
-            if (parsedAppManifest.value.AppState.appid == appid) return .{ parsedAppManifest, entry.value_ptr.path };
+            if (parsedAppManifest.value.AppState.appid == appid) return .{ .app_manifest = parsedAppManifest, .path = entry.value_ptr.path };
         }
 
         return error.GameNotFound;

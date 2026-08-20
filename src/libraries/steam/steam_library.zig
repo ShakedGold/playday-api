@@ -2,6 +2,7 @@ const std = @import("std");
 
 const metadata = @import("metadata");
 const models = @import("models");
+const utils = @import("utils");
 
 const steam_local = @import("local/steam_local.zig");
 const steam_web_api = @import("steam_web_api.zig");
@@ -28,8 +29,14 @@ pub const SteamLibrary = struct {
     }
 
     fn getGame(self: *SteamLibrary, apiGame: *steam_web_api.APIGame, allocator: std.mem.Allocator) !models.game.Game {
-        var installedGame, const path = self.steamLocal.getInstalledGame(apiGame.appid) catch .{ null, null };
-        defer if (installedGame != null) installedGame.?.deinit();
+        var installedGame = self.steamLocal.getInstalledGame(apiGame.appid) catch |err| blk: {
+            if (err == error.GameNotFound) {
+                log.warn("game = {s} is not found on the file system", .{apiGame.name});
+            }
+
+            break :blk null;
+        };
+        defer if (installedGame) |game| game.app_manifest.deinit();
 
         const id = try std.fmt.allocPrint(allocator, "{d}", .{apiGame.appid});
         errdefer allocator.free(id);
@@ -37,23 +44,38 @@ pub const SteamLibrary = struct {
         const name = try allocator.dupe(u8, apiGame.name);
         errdefer allocator.free(name);
 
+        const icon = try apiGame.fetchIcon(&self.steamAPI.client, allocator);
+        errdefer if (icon) |i| allocator.free(i);
+
         var installedLocation: ?[]u8 = null;
-        if (path != null) {
-            installedLocation = try installedGame.?.value.getInstallFullPath(allocator, path.?);
+        if (installedGame) |*game| {
+            installedLocation = try game.app_manifest.value.getInstallFullPath(allocator, game.path);
         }
-        errdefer if (installedLocation != null) allocator.free(installedLocation);
+        errdefer if (installedLocation) |location| allocator.free(location);
+
+        var lastPlayed: ?u64 = null;
+        if (installedGame) |*game| {
+            lastPlayed = game.app_manifest.value.AppState.LastPlayed;
+        }
 
         return .{
             .id = id,
             .name = name,
             .playtime = apiGame.playtime_forever,
-            .installed_location = if (installedGame != null and path != null) installedLocation else null,
+            .installed_location = installedLocation,
             .library = .steam,
+            .icon = icon,
+            .last_played = lastPlayed,
         };
     }
 
-    fn getGameTask(self: *SteamLibrary, apiGame: *steam_web_api.APIGame, allocator: std.mem.Allocator, result: *?models.game.Game) void {
-        result.* = self.getGame(apiGame, allocator) catch null;
+    fn getGameTask(self: *SteamLibrary, allocator: std.mem.Allocator, games: []?models.game.Game, apiGame: *steam_web_api.APIGame, index: usize) void {
+        const result = &games[index];
+        result.* = self.getGame(apiGame, allocator) catch |err| blk: {
+            log.err("Error while fetching installed game: {}", .{err});
+
+            break :blk null;
+        };
     }
 
     pub fn getGames(self: *SteamLibrary, io: std.Io, allocator: std.mem.Allocator) ![]?models.game.Game {
@@ -61,29 +83,18 @@ pub const SteamLibrary = struct {
         defer apiGamesList.deinit();
 
         log.info("Received: {d} games", .{apiGamesList.games.len});
-        var games = try allocator.alloc(?models.game.Game, apiGamesList.games.len);
+        const games = try allocator.alloc(?models.game.Game, apiGamesList.games.len);
 
-        const concurrency_limit = 25;
-        var i: usize = 0;
-        while (i < apiGamesList.games.len) {
-            const end = @min(i + concurrency_limit, apiGamesList.games.len);
-            var gameGroup: std.Io.Group = .init;
-            errdefer gameGroup.cancel(io);
+        // A caution measure, if we do not go over all of the items for whatever reason, we want them to be null so we wont put garbage data in the database
+        @memset(games, null);
 
-            var j = i;
-            while (j < end) : (j += 1) {
-                log.info("Creating the game model: {s}, appid: {d}", .{ apiGamesList.games[j].name, apiGamesList.games[j].appid });
-                try gameGroup.concurrent(io, getGameTask, .{ self, &apiGamesList.games[j], allocator, &games[j] });
-            }
+        const concurrency: utils.async.BoundedConcurrency(steam_web_api.APIGame) = .{
+            .items = apiGamesList.games,
+            .batch_size = 25,
+        };
 
-            try gameGroup.await(io);
-            i = end;
-        }
+        try concurrency.processAll(io, getGameTask, .{ self, allocator, games });
 
         return games;
-    }
-
-    pub fn run(self: *const SteamLibrary, game: *const models.game.Game) !void {
-        try self.steamLocal.run(game);
     }
 };
