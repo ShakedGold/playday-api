@@ -21,18 +21,23 @@ pub const MetadataRefresher = struct {
 
     pub fn refreshLogo(self: *MetadataRefresher) !void {
         try self.refreshLogoFn(self.this);
+        try self.game.update(self.io, self.allocator);
     }
     pub fn refreshHero(self: *MetadataRefresher) !void {
         try self.refreshHeroFn(self.this);
+        try self.game.update(self.io, self.allocator);
     }
     pub fn refreshGrid(self: *MetadataRefresher) !void {
         try self.refreshGridFn(self.this);
+        try self.game.update(self.io, self.allocator);
     }
     pub fn refreshIcon(self: *MetadataRefresher) !void {
         try self.refreshIconFn(self.this);
+        try self.game.update(self.io, self.allocator);
     }
     pub fn refreshDescription(self: *MetadataRefresher) !void {
         try self.refreshDescriptionFn(self.this);
+        try self.game.update(self.io, self.allocator);
     }
     pub fn deinit(self: *MetadataRefresher) void {
         self.deinitFn(self.this);

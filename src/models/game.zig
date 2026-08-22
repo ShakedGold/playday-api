@@ -57,6 +57,7 @@ pub fn getGames(allocator: std.mem.Allocator, io: std.Io) !std.ArrayList(Game) {
             .playtime = game.playtime,
             .last_played = game.last_played,
             .library = game.library,
+            .description = if (game.description) |description| try allocator.dupe(u8, description) else null,
             .icon = if (game.icon) |icon| try allocator.dupe(u8, icon) else null,
             .logo = if (game.logo) |logo| try allocator.dupe(u8, logo) else null,
             .hero = if (game.hero) |hero| try allocator.dupe(u8, hero) else null,
@@ -95,5 +96,7 @@ pub fn update(self: *Game, io: std.Io, allocator: std.mem.Allocator) !void {
     try ensureTable(connection);
 
     var query = try connection.query(Game).where("id", self.id).update(self.*).prepare();
+    defer query.deinit();
+
     try query.exec();
 }

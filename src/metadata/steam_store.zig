@@ -15,10 +15,9 @@ const GRID_URL_FORMAT = "https://shared.steamstatic.com/store_item_assets/steam/
 const STORE_PAGE_FORMAT = "https://store.steampowered.com/api/appdetails?appids={[id]s}&cc=us&l=en";
 
 client: http.client.Client,
-refresher: ?SteamStoreRefresher = null,
 
 const SteamStoreResponse = struct {
-    detailed_description: []const u8,
+    short_description: []const u8,
 };
 
 const SteamStoreRefresher = struct {
@@ -49,6 +48,8 @@ const SteamStoreRefresher = struct {
         const self: *@This() = @ptrCast(@alignCast(ctx));
 
         if (self.game_page) |game_page| game_page.deinit();
+
+        self.allocator.destroy(self);
     }
 
     pub fn refreshLogo(ctx: *anyopaque) !void {
@@ -93,7 +94,8 @@ const SteamStoreRefresher = struct {
     }
 
     fn refreshGamePage(self: *SteamStoreRefresher) !void {
-        const response = self.client.get(STORE_PAGE_FORMAT, .{ .id = self.game.id }) catch return error.RequestFailed;
+        var response = self.client.get(STORE_PAGE_FORMAT, .{ .id = self.game.id }) catch return error.RequestFailed;
+        defer response.deinit();
 
         if (response.status != .ok) {
             return error.RequestFailed;
@@ -118,7 +120,7 @@ const SteamStoreRefresher = struct {
         };
 
         if (!app.object.get("success").?.bool) {
-            log.err("Steam responded with success != true (success == {})", .{app.object.get("success").?});
+            log.err("Steam responded with success != true (success == {}) for game: {s}", .{ app.object.get("success").?, self.game.name });
 
             return error.NotFound;
         }
@@ -151,7 +153,11 @@ const SteamStoreRefresher = struct {
             try self.refreshGamePage();
         }
 
-        self.game.description = self.allocator.dupe(u8, self.game_page.?.value.detailed_description) catch |err| {
+        if (self.game.description) |description| {
+            self.allocator.free(description);
+        }
+
+        self.game.description = self.allocator.dupe(u8, self.game_page.?.value.short_description) catch |err| {
             log.err("Failed to dupe description: {}", .{err});
 
             return error.NotFound;
@@ -172,12 +178,13 @@ pub fn deinit(self: *SteamStoreMetadata) void {
 }
 
 pub fn Refresher(parent: *SteamStoreMetadata, game: *models.game.Game, io: std.Io, allocator: std.mem.Allocator) metadata.MetadataRefresher {
-    parent.refresher = SteamStoreRefresher{
+    const refresher = allocator.create(SteamStoreRefresher) catch @panic("Failed to allocate SteamStoreRefresher");
+    refresher.* = .{
         .allocator = allocator,
         .game = game,
         .io = io,
         .client = &parent.client,
     };
 
-    return parent.refresher.?.init();
+    return refresher.init();
 }
