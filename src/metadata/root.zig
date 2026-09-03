@@ -3,70 +3,92 @@ const std = @import("std");
 const http = @import("http");
 const models = @import("models");
 
-const SteamStoreProvider = @import("steam_store.zig");
+const igdb = @import("igdb.zig");
+const steam_store = @import("steam_store.zig");
 
-pub const MetadataRefresher = struct {
-    game: *models.game.Game,
-    allocator: std.mem.Allocator,
-    io: std.Io,
-    client: *http.client.Client,
-    this: *anyopaque,
+const Refresher = union(enum) {
+    steam_store: steam_store.SteamStoreRefresher,
+    igdb: igdb.IGDBRefresher,
 
-    refreshLogoFn: *const fn (self: *anyopaque) error{ RequestFailed, NotSupported, NotFound }!void,
-    refreshHeroFn: *const fn (self: *anyopaque) error{ RequestFailed, NotSupported, NotFound }!void,
-    refreshGridFn: *const fn (self: *anyopaque) error{ RequestFailed, NotSupported, NotFound }!void,
-    refreshIconFn: *const fn (self: *anyopaque) error{ RequestFailed, NotSupported, NotFound }!void,
-    refreshDescriptionFn: *const fn (self: *anyopaque) error{ RequestFailed, NotSupported, NotFound }!void,
-    deinitFn: *const fn (self: *anyopaque) void,
+    pub fn deinit(self: *@This()) void {
+        switch (self.*) {
+            inline else => |*tag| {
+                tag.deinit();
+            },
+        }
+    }
 
-    pub fn refreshLogo(self: *MetadataRefresher) !void {
-        try self.refreshLogoFn(self.this);
-        try self.game.update(self.io, self.allocator);
+    pub fn refreshLogo(self: *@This()) !void {
+        switch (self.*) {
+            inline else => |*tag| {
+                try tag.refreshLogo();
+                try tag.game.update(tag.io, tag.allocator);
+            },
+        }
     }
-    pub fn refreshHero(self: *MetadataRefresher) !void {
-        try self.refreshHeroFn(self.this);
-        try self.game.update(self.io, self.allocator);
+
+    pub fn refreshHero(self: *@This()) !void {
+        switch (self.*) {
+            inline else => |*tag| {
+                try tag.refreshHero();
+                try tag.game.update(tag.io, tag.allocator);
+            },
+        }
     }
-    pub fn refreshGrid(self: *MetadataRefresher) !void {
-        try self.refreshGridFn(self.this);
-        try self.game.update(self.io, self.allocator);
+
+    pub fn refreshGrid(self: *@This()) !void {
+        switch (self.*) {
+            inline else => |*tag| {
+                try tag.refreshGrid();
+                try tag.game.update(tag.io, tag.allocator);
+            },
+        }
     }
-    pub fn refreshIcon(self: *MetadataRefresher) !void {
-        try self.refreshIconFn(self.this);
-        try self.game.update(self.io, self.allocator);
+
+    pub fn refreshIcon(self: *@This()) !void {
+        switch (self.*) {
+            inline else => |*tag| {
+                try tag.refreshIcon();
+                try tag.game.update(tag.io, tag.allocator);
+            },
+        }
     }
-    pub fn refreshDescription(self: *MetadataRefresher) !void {
-        try self.refreshDescriptionFn(self.this);
-        try self.game.update(self.io, self.allocator);
-    }
-    pub fn deinit(self: *MetadataRefresher) void {
-        self.deinitFn(self.this);
+
+    pub fn refreshDescription(self: *@This()) !void {
+        switch (self.*) {
+            inline else => |*tag| {
+                try tag.refreshDescription();
+                try tag.game.update(tag.io, tag.allocator);
+            },
+        }
     }
 };
 
 pub const MetadataProvider = union(enum) {
-    steam_store: SteamStoreProvider,
+    steam_store: steam_store.SteamStore,
+    igdb: igdb.IGDB,
 
     pub fn init(
         io: std.Io,
         allocator: std.mem.Allocator,
-        provider_type: std.meta.Tag(MetadataProvider),
-    ) !MetadataProvider {
+        comptime provider_type: std.meta.Tag(MetadataProvider),
+        params: Params(provider_type),
+    ) @This() {
         return switch (provider_type) {
             inline else => |comptime_tag| {
                 const name = @tagName(comptime_tag);
-                const Provider = @FieldType(MetadataProvider, name);
+                const Provider = @FieldType(@This(), name);
 
                 return @unionInit(
-                    MetadataProvider,
+                    @This(),
                     name,
-                    try Provider.init(io, allocator),
+                    Provider.init(io, allocator, params),
                 );
             },
         };
     }
 
-    pub fn deinit(self: *MetadataProvider) void {
+    pub fn deinit(self: *@This()) void {
         return switch (self.*) {
             inline else => |*tag| {
                 return tag.deinit();
@@ -74,14 +96,22 @@ pub const MetadataProvider = union(enum) {
         };
     }
 
-    pub fn refresher(
-        self: *MetadataProvider,
-        game: *models.game.Game,
-        io: std.Io,
-        allocator: std.mem.Allocator,
-    ) MetadataRefresher {
+    pub fn refresher(self: *@This(), game: *models.game.Game) Refresher {
         return switch (self.*) {
-            inline else => |*provider| provider.Refresher(game, io, allocator),
+            inline else => |*provider, tag| {
+                return @unionInit(
+                    Refresher,
+                    @tagName(tag),
+                    provider.refresher(game),
+                );
+            },
         };
+    }
+
+    fn Params(comptime provider_type: std.meta.Tag(MetadataProvider)) type {
+        const name = @tagName(provider_type);
+        const Provider = @FieldType(@This(), name);
+
+        return Provider.Params;
     }
 };

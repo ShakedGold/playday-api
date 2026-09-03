@@ -81,7 +81,7 @@ pub fn run(io: std.Io, allocator: std.mem.Allocator, game: *const models.game.Ga
     );
     defer allocator.free(game_url);
 
-    var child = try std.process.spawn(io, .{
+    _ = try std.process.spawn(io, .{
         .argv = &.{
             "steam",
             game_url,
@@ -90,6 +90,4 @@ pub fn run(io: std.Io, allocator: std.mem.Allocator, game: *const models.game.Ga
         .stdin = .ignore,
         .stdout = .ignore,
     });
-
-    _ = try child.wait(io);
 }

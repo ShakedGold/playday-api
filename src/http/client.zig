@@ -18,8 +18,17 @@ pub fn init(io: std.Io, allocator: std.mem.Allocator) Client {
     };
 }
 
+const HttpOptions = struct {
+    extra_headers: []const std.http.Header,
+    body: ?[]const u8 = null,
+
+    pub const empty: HttpOptions = .{
+        .extra_headers = &.{},
+    };
+};
+
 /// The response needs to be `.deinit()` by the caller
-pub fn fetch(self: *Client, method: std.http.Method, comptime format: []const u8, args: anytype) !response.Response {
+pub fn fetch(self: *Client, method: std.http.Method, comptime format: []const u8, args: anytype, options: HttpOptions) !response.Response {
     log.debug("Fetching: " ++ format, args);
 
     var body = std.Io.Writer.Allocating.init(self.allocator);
@@ -34,6 +43,8 @@ pub fn fetch(self: *Client, method: std.http.Method, comptime format: []const u8
         .method = method,
         .location = .{ .uri = uri },
         .response_writer = &body.writer,
+        .payload = options.body,
+        .extra_headers = options.extra_headers,
     });
     try body.writer.flush();
 
@@ -46,8 +57,19 @@ pub fn fetch(self: *Client, method: std.http.Method, comptime format: []const u8
     };
 }
 
-pub fn get(self: *Client, comptime format: []const u8, args: anytype) !response.Response {
-    return try self.fetch(.GET, format, args);
+pub fn get(self: *Client, comptime format: []const u8, args: anytype, options: HttpOptions) !response.Response {
+    return self.fetch(.GET, format, args, options);
+}
+
+pub fn post(self: *Client, comptime format: []const u8, args: anytype, options: HttpOptions) !response.Response {
+    var opts = options;
+
+    // On a POST requst, a body is required
+    if (opts.body == null) {
+        opts.body = &.{};
+    }
+
+    return self.fetch(.POST, format, args, opts);
 }
 
 pub fn deinit(self: *Client) void {

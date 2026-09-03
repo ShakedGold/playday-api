@@ -1,4 +1,5 @@
 const std = @import("std");
+
 const http = @import("http");
 
 const log = std.log.scoped(.steam_web_api);
@@ -11,7 +12,7 @@ pub const APIGame = struct {
 
     pub fn fetchIcon(self: *APIGame, client: *http.client.Client, allocator: std.mem.Allocator) !?[]u8 {
         log.debug("Fetching: {s} https://media.steampowered.com/steamcommunity/public/images/apps/{d}/{s}.jpg", .{ self.name, self.appid, self.img_icon_url });
-        var response = try client.get("https://media.steampowered.com/steamcommunity/public/images/apps/{d}/{s}.jpg", .{ self.appid, self.img_icon_url });
+        var response = try client.get("https://media.steampowered.com/steamcommunity/public/images/apps/{d}/{s}.jpg", .{ self.appid, self.img_icon_url }, .empty);
         defer response.deinit();
 
         if (response.status != .ok) {
@@ -71,6 +72,7 @@ pub const SteamAPI = struct {
         var response = try self.client.get(
             "https://{s}/IPlayerService/GetOwnedGames/v0001/?key={s}&steamid={s}&include_appinfo=true&include_played_free_games=true&format=json",
             .{ DOMAIN, self.key, self.steamid },
+            .empty,
         );
         defer response.deinit();
 

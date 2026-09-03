@@ -7,54 +7,75 @@ const metadata = @import("root.zig");
 
 const log = std.log.scoped(.steam_store_metadata);
 
-pub const SteamStoreMetadata = @This();
-
 const LOGO_URL_FORMAT = "https://cdn.cloudflare.steamstatic.com/steam/apps/{[id]s}/logo.png";
 const HERO_URL_FORMAT = "https://shared.steamstatic.com/store_item_assets/steam/apps/{[id]s}/library_hero.jpg";
 const GRID_URL_FORMAT = "https://shared.steamstatic.com/store_item_assets/steam/apps/{[id]s}/library_600x900.jpg";
 const STORE_PAGE_FORMAT = "https://store.steampowered.com/api/appdetails?appids={[id]s}&cc=us&l=en";
 
+io: std.Io,
+allocator: std.mem.Allocator,
 client: http.client.Client,
 
 const SteamStoreResponse = struct {
     short_description: []const u8,
 };
 
-const SteamStoreRefresher = struct {
-    client: *http.client.Client,
-    game: *models.game.Game,
-    allocator: std.mem.Allocator,
+pub const SteamStore = struct {
+    pub const Params = struct {};
+
     io: std.Io,
-    game_page: ?std.json.Parsed(SteamStoreResponse) = null,
+    allocator: std.mem.Allocator,
+    client: http.client.Client,
 
-    pub fn init(self: *@This()) metadata.MetadataRefresher {
+    pub fn init(io: std.Io, allocator: std.mem.Allocator, params: Params) @This() {
+        _ = params;
+
         return .{
-            .game = self.game,
-            .io = self.io,
-            .allocator = self.allocator,
-            .client = self.client,
-            .this = @ptrCast(self),
-
-            .refreshDescriptionFn = refreshDescription,
-            .refreshGridFn = refreshGrid,
-            .refreshHeroFn = refreshHero,
-            .refreshLogoFn = refreshLogo,
-            .refreshIconFn = refreshIcon,
-            .deinitFn = deinitFunc,
+            .io = io,
+            .allocator = allocator,
+            .client = .init(io, allocator),
         };
     }
 
-    pub fn deinitFunc(ctx: *anyopaque) void {
-        const self: *@This() = @ptrCast(@alignCast(ctx));
+    pub fn deinit(self: *@This()) void {
+        self.client.deinit();
+        self.* = undefined;
+    }
 
+    pub fn refresher(self: *@This(), game: *models.game.Game) SteamStoreRefresher {
+        return .init(self.io, self.allocator, game);
+    }
+};
+
+pub const SteamStoreRefresher = struct {
+    allocator: std.mem.Allocator,
+    io: std.Io,
+
+    game: *models.game.Game,
+    client: http.client.Client,
+    game_page: ?std.json.Parsed(SteamStoreResponse) = null,
+
+    pub fn init(
+        io: std.Io,
+        allocator: std.mem.Allocator,
+        game: *models.game.Game,
+    ) @This() {
+        return .{
+            .io = io,
+            .allocator = allocator,
+            .client = .init(io, allocator),
+            .game = game,
+        };
+    }
+
+    pub fn deinit(self: *@This()) void {
         if (self.game_page) |game_page| game_page.deinit();
 
         self.allocator.destroy(self);
     }
 
-    pub fn refreshLogo(ctx: *anyopaque) !void {
-        const self: *@This() = @ptrCast(@alignCast(ctx));
-        var response = self.client.get(LOGO_URL_FORMAT, .{ .id = self.game.id }) catch return error.RequestFailed;
+    pub fn refreshLogo(self: *@This()) !void {
+        var response = try self.client.get(LOGO_URL_FORMAT, .{ .id = self.game.id }, .empty);
 
         if (response.status == .ok) {
             if (self.game.logo) |logo| self.allocator.free(logo);
@@ -64,9 +85,8 @@ const SteamStoreRefresher = struct {
         }
     }
 
-    pub fn refreshHero(ctx: *anyopaque) !void {
-        const self: *@This() = @ptrCast(@alignCast(ctx));
-        var response = self.client.get(HERO_URL_FORMAT, .{ .id = self.game.id }) catch return error.RequestFailed;
+    pub fn refreshHero(self: *@This()) !void {
+        var response = try self.client.get(HERO_URL_FORMAT, .{ .id = self.game.id }, .empty);
 
         if (response.status == .ok) {
             if (self.game.hero) |hero| self.allocator.free(hero);
@@ -76,9 +96,8 @@ const SteamStoreRefresher = struct {
         }
     }
 
-    pub fn refreshGrid(ctx: *anyopaque) !void {
-        const self: *@This() = @ptrCast(@alignCast(ctx));
-        var response = self.client.get(GRID_URL_FORMAT, .{ .id = self.game.id }) catch return error.RequestFailed;
+    pub fn refreshGrid(self: *@This()) !void {
+        var response = try self.client.get(GRID_URL_FORMAT, .{ .id = self.game.id }, .empty);
 
         if (response.status == .ok) {
             if (self.game.grid) |grid| self.allocator.free(grid);
@@ -88,13 +107,13 @@ const SteamStoreRefresher = struct {
         }
     }
 
-    pub fn refreshIcon(ctx: *anyopaque) !void {
-        _ = ctx; // autofix
+    pub fn refreshIcon(self: *@This()) !void {
+        _ = self; // autofix
         return error.NotSupported;
     }
 
-    fn refreshGamePage(self: *SteamStoreRefresher) !void {
-        var response = self.client.get(STORE_PAGE_FORMAT, .{ .id = self.game.id }) catch return error.RequestFailed;
+    fn refreshGamePage(self: *@This()) !void {
+        var response = try self.client.get(STORE_PAGE_FORMAT, .{ .id = self.game.id }, .empty);
         defer response.deinit();
 
         if (response.status != .ok) {
@@ -146,9 +165,7 @@ const SteamStoreRefresher = struct {
         self.game_page = parsed;
     }
 
-    pub fn refreshDescription(ctx: *anyopaque) !void {
-        const self: *@This() = @ptrCast(@alignCast(ctx));
-
+    pub fn refreshDescription(self: *@This()) !void {
         if (self.game_page == null) {
             try self.refreshGamePage();
         }
@@ -164,27 +181,3 @@ const SteamStoreRefresher = struct {
         };
     }
 };
-
-pub fn init(io: std.Io, allocator: std.mem.Allocator) !SteamStoreMetadata {
-    return .{
-        .client = .init(io, allocator),
-    };
-}
-
-pub fn deinit(self: *SteamStoreMetadata) void {
-    self.client.deinit();
-
-    self.* = undefined;
-}
-
-pub fn Refresher(parent: *SteamStoreMetadata, game: *models.game.Game, io: std.Io, allocator: std.mem.Allocator) metadata.MetadataRefresher {
-    const refresher = allocator.create(SteamStoreRefresher) catch @panic("Failed to allocate SteamStoreRefresher");
-    refresher.* = .{
-        .allocator = allocator,
-        .game = game,
-        .io = io,
-        .client = &parent.client,
-    };
-
-    return refresher.init();
-}
