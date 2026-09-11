@@ -1,9 +1,8 @@
 const std = @import("std");
 
+const db = @import("db");
 const fr = @import("fridge");
 const libraries = @import("libraries");
-
-const db = @import("db.zig");
 
 const log = std.log.scoped(.game);
 
@@ -72,7 +71,7 @@ pub fn insert(self: *Game, io: std.Io, allocator: std.mem.Allocator) !void {
     var connection = try db.getConnection(allocator, io);
     defer db.deinit(connection, allocator);
 
-    try ensureTable(connection);
+    // try ensureTable(connection);
 
     _ = try connection.insert(Game, self.*);
 }
@@ -93,7 +92,7 @@ pub fn update(self: *Game, io: std.Io, allocator: std.mem.Allocator) !void {
     const connection = try db.getConnection(allocator, io);
     defer db.deinit(connection, allocator);
 
-    try ensureTable(connection);
+    // try ensureTable(connection);
 
     var query = try connection.query(Game).where("id", self.id).update(self.*).prepare();
     defer query.deinit();

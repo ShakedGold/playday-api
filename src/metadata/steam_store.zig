@@ -70,8 +70,9 @@ pub const SteamStoreRefresher = struct {
 
     pub fn deinit(self: *@This()) void {
         if (self.game_page) |game_page| game_page.deinit();
+        self.client.deinit();
 
-        self.allocator.destroy(self);
+        self.* = undefined;
     }
 
     pub fn refreshLogo(self: *@This()) !void {

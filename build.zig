@@ -14,13 +14,21 @@ pub fn build(b: *std.Build) void {
         .root_source_file = b.path("src/http/root.zig"),
     });
 
+    // Use .bundle = false if you want to link system SQLite3
     const sqlite = b.dependency("fridge", .{ .bundle = true });
 
-    // Use .bundle = false if you want to link system SQLite3
+    const db = b.addModule("models", .{
+        .root_source_file = b.path("src/models/db/root.zig"),
+        .imports = &.{
+            .{ .name = "fridge", .module = sqlite.module("fridge") },
+        },
+    });
+
     const models = b.addModule("models", .{
         .root_source_file = b.path("src/models/root.zig"),
         .imports = &.{
             .{ .name = "fridge", .module = sqlite.module("fridge") },
+            .{ .name = "db", .module = db },
         },
     });
 

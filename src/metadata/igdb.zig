@@ -184,6 +184,7 @@ pub const IGDBRefresher = struct {
         defer response.deinit();
 
         const responses = try std.json.parseFromSlice([]IGDBAPIResponse, self.allocator, response.body, .{ .ignore_unknown_fields = true, .allocate = .alloc_always });
+        errdefer responses.deinit();
 
         if (responses.value.len < 1) {
             return error.GameNotFound;
@@ -196,7 +197,7 @@ pub const IGDBRefresher = struct {
     fn apiCall(self: *@This(), endpoint: []const u8, body: []const u8) !http.response.Response {
         var response = try self.post(endpoint, body);
 
-        log.debug("status: {}", .{response.status});
+        log.debug("[{s}/{s}] status: {}", .{ self.game.name, endpoint, response.status });
 
         // Try again if the access_token is invalid
         if (response.status == .unauthorized) {

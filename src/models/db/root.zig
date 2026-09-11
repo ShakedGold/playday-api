@@ -1,5 +1,10 @@
 const std = @import("std");
+
 const fr = @import("fridge");
+
+pub const Game = @import("game.zig");
+pub const LibraryData = @import("library_data.zig");
+pub const Metadata = @import("metadata.zig");
 
 const DATABASE_NAME = "playday.db";
 
