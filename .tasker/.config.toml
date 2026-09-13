@@ -1,0 +1,20 @@
+root_file_name = "README.md"
+
+[properties.status]
+type = "enum"
+values = ["open", "closed"]
+default = "open"
+
+[properties.priority]
+type = "number"
+min = 0
+max = 100
+default = 999
+
+[properties.kind]
+type = "enum"
+values = ["bug", "feature", "test"]
+default = "FILL-ME"
+
+[properties.tags]
+type = "array"
