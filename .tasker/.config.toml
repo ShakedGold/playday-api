@@ -1,4 +1,9 @@
+#:schema ./.config.schema.json
+
 root_file_name = "README.md"
+
+[generation]
+method = "proquint"
 
 [properties.status]
 type = "enum"
