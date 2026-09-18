@@ -28,7 +28,7 @@ pub const SteamLibrary = struct {
         self.steamLocal.* = undefined;
     }
 
-    fn getGame(self: *SteamLibrary, apiGame: *steam_web_api.APIGame, allocator: std.mem.Allocator) !models.game.Game {
+    fn getGame(self: *SteamLibrary, apiGame: *steam_web_api.APIGame, io: std.Io, allocator: std.mem.Allocator) !models.game.Game {
         var installedGame = self.steamLocal.getInstalledGame(apiGame.appid) catch |err| blk: {
             if (err == error.GameNotFound) {
                 log.warn("game = {s} is not found on the file system", .{apiGame.name});
@@ -58,20 +58,36 @@ pub const SteamLibrary = struct {
             lastPlayed = game.app_manifest.value.AppState.LastPlayed;
         }
 
+        const gameId = try allocator.alloc(u8, 36);
+        const uuid = utils.uuid.uuidV4(io);
+        @memcpy(gameId, &uuid);
+
         return .{
-            .id = id,
-            .name = name,
-            .playtime = apiGame.playtime_forever,
-            .installed_location = installedLocation,
-            .library = .steam,
-            .icon = icon,
-            .last_played = lastPlayed,
+            .game = .{
+                .id = gameId,
+                .name = name,
+                .playtime = apiGame.playtime_forever,
+                .installed_location = installedLocation,
+                .last_played = lastPlayed,
+            },
+            .library = .{
+                .id = gameId,
+                .library = .{
+                    .steam = .{
+                        .appid = id,
+                    },
+                },
+            },
+            .metadata = .{
+                .id = gameId,
+                .icon = icon,
+            },
         };
     }
 
-    fn getGameTask(self: *SteamLibrary, allocator: std.mem.Allocator, games: []?models.game.Game, apiGame: *steam_web_api.APIGame, index: usize) void {
+    fn getGameTask(self: *SteamLibrary, io: std.Io, allocator: std.mem.Allocator, games: []?models.game.Game, apiGame: *steam_web_api.APIGame, index: usize) void {
         const result = &games[index];
-        result.* = self.getGame(apiGame, allocator) catch |err| blk: {
+        result.* = self.getGame(apiGame, io, allocator) catch |err| blk: {
             log.err("Error while fetching installed game: {}", .{err});
 
             break :blk null;
@@ -93,7 +109,7 @@ pub const SteamLibrary = struct {
             .batch_size = 25,
         };
 
-        try concurrency.processAll(io, getGameTask, .{ self, allocator, games });
+        try concurrency.processAll(io, getGameTask, .{ self, io, allocator, games });
 
         return games;
     }

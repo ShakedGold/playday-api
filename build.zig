@@ -17,7 +17,7 @@ pub fn build(b: *std.Build) void {
     // Use .bundle = false if you want to link system SQLite3
     const sqlite = b.dependency("fridge", .{ .bundle = true });
 
-    const db = b.addModule("models", .{
+    const db = b.addModule("db", .{
         .root_source_file = b.path("src/models/db/root.zig"),
         .imports = &.{
             .{ .name = "fridge", .module = sqlite.module("fridge") },
