@@ -117,7 +117,7 @@ pub const IGDBRefresher = struct {
     pub fn refreshHero(self: *@This()) !void {
         const game = try self.findGame();
 
-        if (self.game.hero) |hero| {
+        if (self.game.metadata.hero) |hero| {
             self.allocator.free(hero);
         }
 
@@ -128,17 +128,17 @@ pub const IGDBRefresher = struct {
             return error.GameNotFound;
         }
 
-        if (self.game.hero) |hero| {
+        if (self.game.metadata.hero) |hero| {
             self.allocator.free(hero);
         }
 
-        self.game.hero = try self.allocator.dupe(u8, response.body);
+        self.game.metadata.hero = try self.allocator.dupe(u8, response.body);
     }
 
     pub fn refreshGrid(self: *@This()) !void {
         const game = try self.findGame();
 
-        if (self.game.grid) |grid| {
+        if (self.game.metadata.grid) |grid| {
             self.allocator.free(grid);
         }
 
@@ -149,11 +149,11 @@ pub const IGDBRefresher = struct {
             return error.GameNotFound;
         }
 
-        if (self.game.grid) |grid| {
+        if (self.game.metadata.grid) |grid| {
             self.allocator.free(grid);
         }
 
-        self.game.grid = try self.allocator.dupe(u8, response.body);
+        self.game.metadata.grid = try self.allocator.dupe(u8, response.body);
     }
 
     pub fn refreshIcon(self: *@This()) !void {
@@ -165,11 +165,11 @@ pub const IGDBRefresher = struct {
     pub fn refreshDescription(self: *@This()) !void {
         const game = try self.findGame();
 
-        if (self.game.description) |description| {
+        if (self.game.metadata.description) |description| {
             self.allocator.free(description);
         }
 
-        self.game.description = try self.allocator.dupe(u8, game.summary);
+        self.game.metadata.description = try self.allocator.dupe(u8, game.summary);
     }
 
     fn findGame(self: *@This()) !*const IGDBAPIResponse {
@@ -177,7 +177,7 @@ pub const IGDBRefresher = struct {
             return &response.value[0];
         }
 
-        const game_query = try std.fmt.allocPrint(self.allocator, IGDB_GAME_SEARCH_QUERY, .{ .game_name = self.game.name });
+        const game_query = try std.fmt.allocPrint(self.allocator, IGDB_GAME_SEARCH_QUERY, .{ .game_name = self.game.game.name });
         defer self.allocator.free(game_query);
 
         var response = try self.apiCall("games", game_query);
@@ -197,7 +197,7 @@ pub const IGDBRefresher = struct {
     fn apiCall(self: *@This(), endpoint: []const u8, body: []const u8) !http.response.Response {
         var response = try self.post(endpoint, body);
 
-        log.debug("[{s}/{s}] status: {}", .{ self.game.name, endpoint, response.status });
+        log.debug("[{s}/{s}] status: {}", .{ self.game.game.name, endpoint, response.status });
 
         // Try again if the access_token is invalid
         if (response.status == .unauthorized) {
@@ -219,7 +219,7 @@ pub const IGDBRefresher = struct {
         const accessToken = self.access_token.* orelse "";
         const authToken = try std.fmt.bufPrint(buffer[0..], "Bearer {s}", .{accessToken});
 
-        log.debug("Fetching metadata for the game: {s}", .{self.game.name});
+        log.debug("Fetching metadata for the game: {s}", .{self.game.game.name});
 
         return self.client.post(
             IGDB_BASE_URL,
@@ -241,8 +241,6 @@ pub const IGDBRefresher = struct {
     }
 
     fn refreshToken(self: *@This()) !void {
-        log.debug("Refreshing the access token of igdb", .{});
-
         var previousAccessToken: ?[]u8 = null;
 
         if (self.access_token.*) |accessToken| {
@@ -264,6 +262,8 @@ pub const IGDBRefresher = struct {
                 }
             }
         }
+
+        log.debug("Refreshing the access token of igdb", .{});
 
         var response = try self.client.post(TWITCH_REFRESH_TOKEN, .{ .id = self.client_params.id, .secret = self.client_params.secret }, .empty);
         defer response.deinit();

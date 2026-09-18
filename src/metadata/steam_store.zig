@@ -11,6 +11,14 @@ const LOGO_URL_FORMAT = "https://cdn.cloudflare.steamstatic.com/steam/apps/{[id]
 const HERO_URL_FORMAT = "https://shared.steamstatic.com/store_item_assets/steam/apps/{[id]s}/library_hero.jpg";
 const GRID_URL_FORMAT = "https://shared.steamstatic.com/store_item_assets/steam/apps/{[id]s}/library_600x900.jpg";
 const STORE_PAGE_FORMAT = "https://store.steampowered.com/api/appdetails?appids={[id]s}&cc=us&l=en";
+const STORE_PAGE_SEARCH_FORMAT = "https://store.steampowered.com/api/storesearch/?term={[name]s}&cc=us&l=en";
+
+fn isUnreserved(c: u8) bool {
+    return switch (c) {
+        'A'...'Z', 'a'...'z', '0'...'9', '-', '.', '_', '~' => true,
+        else => false,
+    };
+}
 
 io: std.Io,
 allocator: std.mem.Allocator,
@@ -75,34 +83,94 @@ pub const SteamStoreRefresher = struct {
         self.* = undefined;
     }
 
+    fn getGameIdByName(self: *@This(), allocator: std.mem.Allocator) ![]u8 {
+        var buf: [256]u8 = undefined;
+        var writer = std.Io.Writer.fixed(&buf);
+
+        try std.Uri.Component.percentEncode(
+            &writer,
+            self.game.name,
+            isUnreserved,
+        );
+
+        const encoded = writer.buffered();
+
+        var response = try self.client.get(STORE_PAGE_SEARCH_FORMAT, .{ .name = encoded }, .empty);
+        defer response.deinit();
+
+        const root = try std.json.parseFromSlice(
+            std.json.Value,
+            allocator,
+            response.body,
+            .{},
+        );
+        defer root.deinit();
+
+        const items = root.value.object.get("items") orelse {
+            log.err("'items' not found in json object of store search ({s})", .{self.game.name});
+            return error.NotFound;
+        };
+
+        if (items.array.items.len == 0) {
+            log.err("{s} is not found in the steam store", .{self.game.name});
+            return error.NotFound;
+        }
+
+        const itemId = items.array.items[0].object.get("id") orelse {
+            log.err("item id for {s} is not found in the steam store", .{self.game.name});
+            return error.NotFound;
+        };
+
+        return std.fmt.allocPrint(allocator, "{d}", .{itemId.integer});
+    }
+
+    fn getGameId(self: *@This(), allocator: std.mem.Allocator) ![]u8 {
+        const tag = std.meta.activeTag(self.game.library.library);
+
+        if (tag == .steam) {
+            return allocator.dupe(u8, self.game.library.library.steam.appid);
+        }
+
+        return self.getGameIdByName(allocator);
+    }
+
     pub fn refreshLogo(self: *@This()) !void {
-        var response = try self.client.get(LOGO_URL_FORMAT, .{ .id = self.game.id }, .empty);
+        const id = try self.getGameId(self.allocator);
+        defer self.allocator.free(id);
+
+        var response = try self.client.get(LOGO_URL_FORMAT, .{ .id = id }, .empty);
 
         if (response.status == .ok) {
-            if (self.game.logo) |logo| self.allocator.free(logo);
-            self.game.logo = response.body;
+            if (self.game.metadata.logo) |logo| self.allocator.free(logo);
+            self.game.metadata.logo = response.body;
         } else {
             response.deinit();
         }
     }
 
     pub fn refreshHero(self: *@This()) !void {
-        var response = try self.client.get(HERO_URL_FORMAT, .{ .id = self.game.id }, .empty);
+        const id = try self.getGameId(self.allocator);
+        defer self.allocator.free(id);
+
+        var response = try self.client.get(HERO_URL_FORMAT, .{ .id = id }, .empty);
 
         if (response.status == .ok) {
-            if (self.game.hero) |hero| self.allocator.free(hero);
-            self.game.hero = response.body;
+            if (self.game.metadata.hero) |hero| self.allocator.free(hero);
+            self.game.metadata.hero = response.body;
         } else {
             response.deinit();
         }
     }
 
     pub fn refreshGrid(self: *@This()) !void {
-        var response = try self.client.get(GRID_URL_FORMAT, .{ .id = self.game.id }, .empty);
+        const id = try self.getGameId(self.allocator);
+        defer self.allocator.free(id);
+
+        var response = try self.client.get(GRID_URL_FORMAT, .{ .id = id }, .empty);
 
         if (response.status == .ok) {
-            if (self.game.grid) |grid| self.allocator.free(grid);
-            self.game.grid = response.body;
+            if (self.game.metadata.grid) |grid| self.allocator.free(grid);
+            self.game.metadata.grid = response.body;
         } else {
             response.deinit();
         }
@@ -114,7 +182,10 @@ pub const SteamStoreRefresher = struct {
     }
 
     fn refreshGamePage(self: *@This()) !void {
-        var response = try self.client.get(STORE_PAGE_FORMAT, .{ .id = self.game.id }, .empty);
+        const id = try self.getGameId(self.allocator);
+        defer self.allocator.free(id);
+
+        var response = try self.client.get(STORE_PAGE_FORMAT, .{ .id = id }, .empty);
         defer response.deinit();
 
         if (response.status != .ok) {
@@ -133,14 +204,14 @@ pub const SteamStoreRefresher = struct {
         };
         defer root.deinit();
 
-        const app = root.value.object.get(self.game.id) orelse {
-            log.err("Game id not found in json object ({s})", .{self.game.id});
+        const app = root.value.object.get(id) orelse {
+            log.err("Game id not found in json object ({s})", .{id});
 
             return error.NotFound;
         };
 
         if (!app.object.get("success").?.bool) {
-            log.err("Steam responded with success != true (success == {}) for game: {s}", .{ app.object.get("success").?, self.game.name });
+            log.err("Steam responded with success != true (success == {}) for game: {s}", .{ app.object.get("success").?.bool, self.game.game.name });
 
             return error.NotFound;
         }
@@ -171,11 +242,11 @@ pub const SteamStoreRefresher = struct {
             try self.refreshGamePage();
         }
 
-        if (self.game.description) |description| {
+        if (self.game.metadata.description) |description| {
             self.allocator.free(description);
         }
 
-        self.game.description = self.allocator.dupe(u8, self.game_page.?.value.short_description) catch |err| {
+        self.game.metadata.description = self.allocator.dupe(u8, self.game_page.?.value.short_description) catch |err| {
             log.err("Failed to dupe description: {}", .{err});
 
             return error.NotFound;
