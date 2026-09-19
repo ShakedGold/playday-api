@@ -8,4 +8,3 @@ tags:
 ---
 
 # Convert all previous tasks into the proquint task version
-TESTING
