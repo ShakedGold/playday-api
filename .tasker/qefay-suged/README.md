@@ -15,3 +15,6 @@ Some will have X, some will have Y.
 So we need a more flexible DB storage method, like NoSQL, because we can just not define the schema there for the library data and it should just work.
 
 > Make sure to research the best NoSQL solution for this project and find libraries in zig that work with it.
+
+
+TESTING
