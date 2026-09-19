@@ -9,8 +9,6 @@ tags:
 
 # Switch to a NoSQL db
 
-TESTING
-
 Because our current implementation of extra library data (for example the steam id) is stored in a tagged union, we cannot have a schema that fits all of the tagged union's fields
 Some will have X, some will have Y.
 
