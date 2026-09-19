@@ -73,11 +73,11 @@ pub const SteamLocal = struct {
     }
 };
 
-pub fn run(io: std.Io, allocator: std.mem.Allocator, game: *const models.game.Game) !void {
+pub fn run(io: std.Io, allocator: std.mem.Allocator, game_id: []const u8) !void {
     const game_url = try std.fmt.allocPrint(
         allocator,
         "steam://rungameid/{s}",
-        .{game.id},
+        .{game_id},
     );
     defer allocator.free(game_url);
 

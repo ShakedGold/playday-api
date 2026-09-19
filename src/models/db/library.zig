@@ -1,6 +1,7 @@
 const std = @import("std");
 
 const fr = @import("fridge");
+const libraries = @import("libraries");
 
 const db = @import("root.zig");
 
@@ -93,9 +94,6 @@ const SteamLibrary = struct {
     }
 
     pub fn run(self: *const @This(), io: std.Io, allocator: std.mem.Allocator) !void {
-        _ = self; // autofix
-        _ = io; // autofix
-        _ = allocator; // autofix
-        unreachable;
+        try libraries.steam.local.SteamLocalType.run(io, allocator, self.appid);
     }
 };

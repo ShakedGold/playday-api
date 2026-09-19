@@ -51,6 +51,7 @@ pub fn build(b: *std.Build) void {
     });
 
     models.addImport("libraries", libraries);
+    db.addImport("libraries", libraries);
 
     const metadata = b.addModule("metadata", .{
         .root_source_file = b.path("src/metadata/root.zig"),

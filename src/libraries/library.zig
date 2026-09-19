@@ -3,17 +3,7 @@ const std = @import("std");
 const models = @import("models");
 const steam = @import("steam");
 
-const LibraryType = enum {
-    steam,
-
-    pub fn run(self: *const LibraryType, io: std.Io, allocator: std.mem.Allocator, game: *const models.game.Game) !void {
-        switch (self.*) {
-            .steam => try steam.local.SteamLocalType.run(io, allocator, game),
-        }
-    }
-};
-
-pub const Library = union(LibraryType) {
+pub const Library = union(enum) {
     steam: steam.library.SteamLibrary,
 
     pub fn init(

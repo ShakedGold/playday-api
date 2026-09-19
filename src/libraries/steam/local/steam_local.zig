@@ -64,8 +64,4 @@ pub const SteamLocal = struct {
 
         return error.GameNotFound;
     }
-
-    pub fn run(self: *SteamLocal, game: *const dbModels.game.Game) !void {
-        return self.platform.run(game);
-    }
 };
