@@ -5,6 +5,8 @@ kind: feature
 tags:
     - library
     - gog
+blocked:
+    - qujof-tanul 
 ---
 
 # Integrate GOG as a game library

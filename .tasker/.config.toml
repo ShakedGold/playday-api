@@ -23,3 +23,6 @@ default = "FILL-ME"
 
 [properties.tags]
 type = "array"
+
+[properties.blocked]
+type = "array"
