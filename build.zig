@@ -64,12 +64,18 @@ pub fn build(b: *std.Build) void {
         },
     });
 
+    const gog = b.addModule("gog", .{
+        .root_source_file = b.path("src/libraries/gog/root.zig"),
+        .imports = &.{},
+    });
+
     const libraries = b.addModule("libraries", .{
         .root_source_file = b.path("src/libraries/root.zig"),
         .optimize = optimize,
         .target = target,
         .imports = &.{
             .{ .name = "steam", .module = steam },
+            .{ .name = "gog", .module = gog },
             .{ .name = "models", .module = models },
         },
     });
