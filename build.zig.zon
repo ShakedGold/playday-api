@@ -39,6 +39,10 @@
         .playday_vdf = .{
             .path = "../playday-vdf",
         },
+        .cdp = .{
+            .url = "git+https://github.com/shishtpal/zchrome#5572e68ce83483c1b84a9cfe4c82479963ac98d2",
+            .hash = "cdp-0.1.0-gftuyyAcFgDbl1FTkcWG-yWQ8fD0h6vloCvN1gAOocRu",
+        },
     },
     .paths = .{
         "build.zig",
