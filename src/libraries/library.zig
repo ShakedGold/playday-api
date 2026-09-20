@@ -7,7 +7,7 @@ pub const Library = union(enum) {
     steam: steam.library.SteamLibrary,
 
     pub fn init(
-        provider_type: std.meta.Tag(Library),
+        comptime provider_type: std.meta.Tag(Library),
         args: anytype,
     ) Library {
         return switch (provider_type) {
