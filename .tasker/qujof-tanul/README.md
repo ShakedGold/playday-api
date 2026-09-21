@@ -1,5 +1,5 @@
 ---
-status: open
+status: closed
 priority: 40
 kind: feature
 ---
