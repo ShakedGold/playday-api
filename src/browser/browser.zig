@@ -5,18 +5,9 @@ const builtin = @import("builtin");
 
 const websocket = @import("websocket");
 
-pub const browser_local = switch (builtin.target.os.tag) {
-    .linux => @import("browser_linux.zig"),
-    else => @compileError("Unsupported OS"),
-};
+const browser_connect = @import("./browser_connect.zig");
 
 const log = std.log.scoped(.browser);
-pub const Browser = @This();
-
-path: []const u8,
-process: ?std.process.Child,
-client: ?websocket.Client,
-id: usize,
 
 const CDPBrowserMethod = enum { getVersion };
 const CDPPageMethod = enum { navigate, enable, frameNavigated, navigatedWithinDocument, frameStartedNavigating };
@@ -41,7 +32,7 @@ const CDPMethod = union(enum) {
     }
 };
 
-const CDPSession = struct {
+pub const Session = struct {
     id: *usize,
     sessionId: []const u8,
     client: *?websocket.Client,
@@ -82,7 +73,7 @@ const CDPSession = struct {
         allocator.free(self.sessionId);
     }
 
-    pub fn getEvent(self: *@This(), allocator: std.mem.Allocator, response_method: ?CDPMethod, ResultType: type) !?std.json.Parsed(ResultType) {
+    pub fn getEvent(self: *const @This(), allocator: std.mem.Allocator, response_method: ?CDPMethod, ResultType: type) !?std.json.Parsed(ResultType) {
         if (self.client.*) |*client| {
             return receive(client, allocator, response_method, ResultType);
         }
@@ -91,38 +82,110 @@ const CDPSession = struct {
     }
 };
 
-pub fn init(path: []const u8) @This() {
-    return .{
-        .id = 0,
-        .path = path,
-        .process = null,
-        .client = null,
-    };
-}
+pub const Browser = struct {
+    path: []const u8,
+    process: ?std.process.Child,
+    client: ?websocket.Client,
+    id: usize,
 
-pub fn launch(self: *@This(), io: std.Io, allocator: std.mem.Allocator) !void {
-    log.debug("Launching chrome: {s}", .{self.path});
-    self.process = try browser_local.launch(io, self.path);
-
-    log.debug("Connecting to the CDP in", .{});
-    self.client = try browser_local.connect(io, allocator);
-}
-
-pub fn close(self: *@This(), io: std.Io) void {
-    var process = self.process orelse return;
-
-    process.kill(io);
-}
-
-pub fn deinit(self: *@This(), io: std.Io) void {
-    if (self.process) |_| {
-        self.close(io);
+    pub fn init(path: []const u8) @This() {
+        return .{
+            .id = 0,
+            .path = path,
+            .process = null,
+            .client = null,
+        };
     }
 
-    if (self.client) |*client| {
-        client.deinit();
+    pub fn launch(self: *@This(), io: std.Io, allocator: std.mem.Allocator) !void {
+        log.debug("Launching chrome: {s}", .{self.path});
+        self.process = try browser_connect.launch(io, self.path);
+
+        log.debug("Connecting to the CDP in", .{});
+        self.client = try browser_connect.connect(io, allocator);
     }
-}
+
+    pub fn close(self: *@This(), io: std.Io) void {
+        var process = self.process orelse return;
+
+        process.kill(io);
+    }
+
+    pub fn deinit(self: *@This(), io: std.Io) void {
+        if (self.process) |_| {
+            self.close(io);
+        }
+
+        if (self.client) |*client| {
+            client.deinit();
+        }
+    }
+
+    /// Creates a browser session, caller owns memory. should call `deinit`
+    pub fn createSession(self: *@This(), allocator: std.mem.Allocator) !Session {
+        const CreateTargetResponse = struct {
+            result: struct {
+                targetId: []const u8,
+            },
+        };
+
+        const createTargetResponse = try self.sendMessage(
+            allocator,
+            .{ .target = .createTarget },
+            .{ .url = "about:blank" },
+            null,
+            CreateTargetResponse,
+        ) orelse return error.FailedToCreateTarget;
+        defer createTargetResponse.deinit();
+
+        const AttachTargetResponse = struct {
+            params: struct {
+                sessionId: []const u8,
+            },
+        };
+        const attachTargetResponse = try self.sendMessage(
+            allocator,
+            .{ .target = .attachToTarget },
+            .{
+                .targetId = createTargetResponse.value.result.targetId,
+                .flatten = true,
+            },
+            null,
+            AttachTargetResponse,
+        ) orelse return error.FailedToAttachToTarget;
+        defer attachTargetResponse.deinit();
+
+        self.id += 1;
+
+        return .{
+            .id = &self.id,
+            .sessionId = try allocator.dupe(u8, attachTargetResponse.value.params.sessionId),
+            .client = &self.client,
+        };
+    }
+
+    pub fn sendMessage(
+        self: *@This(),
+        allocator: std.mem.Allocator,
+        method: CDPMethod,
+        params: anytype,
+        response_method: ?CDPMethod,
+        ResultType: type,
+    ) !?std.json.Parsed(ResultType) {
+        var buffer: [1024]u8 = undefined;
+        var client = self.client orelse
+            return error.UninitializedClient;
+
+        const requestMessage = try std.fmt.bufPrint(
+            &buffer,
+            \\{{"id":{d},"method":"{f}","params":{f}}}
+        ,
+            .{ self.id, method, std.json.fmt(params, .{}) },
+        );
+
+        return sendAndReceive(&client, &self.id, requestMessage, response_method, allocator, ResultType);
+    }
+};
 
 fn parseCDPMessage(client: *websocket.Client, allocator: std.mem.Allocator, message: websocket.Message, response_method: ?CDPMethod, ResultType: type) !?std.json.Parsed(ResultType) {
     log.debug("Message received: {s}", .{message.data});
@@ -196,49 +259,6 @@ fn parseCDPMessage(client: *websocket.Client, allocator: std.mem.Allocator, mess
     return null;
 }
 
-/// Creates a browser session, caller owns memory. should call `deinit`
-pub fn createSession(self: *@This(), allocator: std.mem.Allocator) !CDPSession {
-    const CreateTargetResponse = struct {
-        result: struct {
-            targetId: []const u8,
-        },
-    };
-
-    const createTargetResponse = try self.sendMessage(
-        allocator,
-        .{ .target = .createTarget },
-        .{ .url = "about:blank" },
-        null,
-        CreateTargetResponse,
-    ) orelse return error.FailedToCreateTarget;
-    defer createTargetResponse.deinit();
-
-    const AttachTargetResponse = struct {
-        params: struct {
-            sessionId: []const u8,
-        },
-    };
-    const attachTargetResponse = try self.sendMessage(
-        allocator,
-        .{ .target = .attachToTarget },
-        .{
-            .targetId = createTargetResponse.value.result.targetId,
-            .flatten = true,
-        },
-        null,
-        AttachTargetResponse,
-    ) orelse return error.FailedToAttachToTarget;
-    defer attachTargetResponse.deinit();
-
-    self.id += 1;
-
-    return .{
-        .id = &self.id,
-        .sessionId = try allocator.dupe(u8, attachTargetResponse.value.params.sessionId),
-        .client = &self.client,
-    };
-}
-
 fn receive(client: *websocket.Client, allocator: std.mem.Allocator, response_method: ?CDPMethod, ResultType: type) !?std.json.Parsed(ResultType) {
     const response = try client.read() orelse return error.NoResponse;
     defer client.done(response);
@@ -253,28 +273,6 @@ fn sendAndReceive(client: *websocket.Client, id: *usize, message: []u8, response
     id.* += 1;
 
     return receive(client, allocator, response_method, ResultType);
-}
-
-pub fn sendMessage(
-    self: *@This(),
-    allocator: std.mem.Allocator,
-    method: CDPMethod,
-    params: anytype,
-    response_method: ?CDPMethod,
-    ResultType: type,
-) !?std.json.Parsed(ResultType) {
-    var buffer: [1024]u8 = undefined;
-    var client = self.client orelse
-        return error.UninitializedClient;
-
-    const requestMessage = try std.fmt.bufPrint(
-        &buffer,
-        \\{{"id":{d},"method":"{f}","params":{f}}}
-    ,
-        .{ self.id, method, std.json.fmt(params, .{}) },
-    );
-
-    return sendAndReceive(&client, &self.id, requestMessage, response_method, allocator, ResultType);
 }
 
 test "Launching the browser and connecting" {
