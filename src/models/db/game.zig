@@ -9,7 +9,7 @@ pub const Game = @This();
 id: []const u8,
 name: []u8,
 playtime: u32,
-last_played: ?u64,
+last_played: ?u64 = null,
 installed_location: ?[]u8 = null,
 
 pub fn ensureTable(connection: *fr.Session) !void {

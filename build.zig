@@ -66,7 +66,14 @@ pub fn build(b: *std.Build) void {
 
     const gog = b.addModule("gog", .{
         .root_source_file = b.path("src/libraries/gog/root.zig"),
-        .imports = &.{},
+        .optimize = optimize,
+        .target = target,
+        .imports = &.{
+            .{ .name = "browser", .module = browser },
+            .{ .name = "http", .module = http },
+            .{ .name = "models", .module = models },
+            .{ .name = "utils", .module = utils },
+        },
     });
 
     const libraries = b.addModule("libraries", .{
@@ -121,12 +128,20 @@ pub fn build(b: *std.Build) void {
     ) orelse &.{};
 
     // Tests
-    const browser_tests = b.addTest(.{
-        .root_module = browser,
-        .filters = test_filter,
-    });
-    const run_tests = b.addRunArtifact(browser_tests);
+    const test_modules = .{
+        .{ .name = "browser", .module = browser },
+        .{ .name = "gog", .module = gog },
+    };
 
-    const test_step = b.step("test", "Run tests");
-    test_step.dependOn(&run_tests.step);
+    inline for (test_modules) |test_module| {
+        const tests = b.addTest(.{
+            .root_module = test_module.module,
+            .filters = test_filter,
+        });
+
+        const run_tests = b.addRunArtifact(tests);
+        const test_step = b.step("test-" ++ test_module.name, "Run tests for the " ++ test_module.name ++ " module");
+
+        test_step.dependOn(&run_tests.step);
+    }
 }
