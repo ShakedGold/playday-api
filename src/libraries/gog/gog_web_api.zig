@@ -279,6 +279,15 @@ pub const GOGWebAPI = struct {
             parsedGogGames.games.appendAssumeCapacity(game);
         }
 
+        // Report that no games have been found
+
+        const amountOfFoundGames = parsedGogGames.games.items.len;
+        const amountOfRequestedGames = gameIDs.value.owned.len;
+
+        if (amountOfRequestedGames != 0 and amountOfFoundGames == 0) {
+            return error.NoGamesFound;
+        }
+
         return parsedGogGames;
     }
 };
@@ -332,13 +341,7 @@ test "Fetch Games - Game not found" {
     var web_api: GOGWebAPI = .init(mock_client);
     defer web_api.deinit();
 
-    _ = web_api.getGames(io, allocator) catch |err| switch (err) {
-        error.GameNotFound => return,
-        else => return err,
-    };
-
-    // We want it to fail
-    return error.GetGamesSucceeded;
+    try std.testing.expectError(error.NoGamesFound, web_api.getGames(io, allocator));
 }
 
 test "Fetch Games - 1 game" {
