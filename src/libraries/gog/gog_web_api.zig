@@ -316,7 +316,7 @@ test "Fetch Games - 0 games" {
     var parsedGames = try web_api.getGames(io, allocator);
     defer parsedGames.deinit(allocator);
 
-    try std.testing.expectEqual(0, parsedGames.games.len);
+    try std.testing.expectEqual(0, parsedGames.games.items.len);
 }
 
 test "Fetch Games - Game not found" {
@@ -350,49 +350,32 @@ test "Fetch Games - 1 game" {
 
     // `curl -L 'https://www.gog.com/en/game/astro_burn_demo' 2>/dev/null | grep '"sku":.*' | grep -o "[0-9]*"` - make sure you own this game (it is free)
     const owned_game: u32 = 1182721388;
+    const owned_game_name = "Astro Burn (DEMO)";
 
     var mock_client = http.mock_client.init(io, allocator, .default);
+
     const owned_games: GOGOwnedGames = .{ .owned = &.{owned_game} };
-    const formatted_body = std.json.fmt(owned_games, .{});
-
+    const formatted_games_body = std.json.fmt(owned_games, .{});
     // will get freed in `web_api`
-    const response: http.response.Response = .{
+    const games_response: http.response.Response = .{
         .allocator = allocator,
-        .body = try std.fmt.allocPrint(allocator, "{f}", .{formatted_body}),
+        .body = try std.fmt.allocPrint(allocator, "{f}", .{formatted_games_body}),
         .status = .ok,
     };
 
-    try mock_client.registerMockResponse(.GET, "https://embed.gog.com/user/data/games", .{}, response);
-
-    var web_api: GOGWebAPI = .init(mock_client);
-    defer web_api.deinit();
-
-    var parsedGames = try web_api.getGames(io, allocator);
-    defer parsedGames.deinit(allocator);
-
-    try std.testing.expectEqual(1, parsedGames.games.len);
-}
-
-test "Fetch Games - some owned" {
-    const io = std.testing.io;
-    const allocator = std.testing.allocator;
-
-    // `curl -L 'https://www.gog.com/en/game/astro_burn_demo' 2>/dev/null | grep '"sku":.*' | grep -o "[0-9]*"` - make sure you own this game (it is free)
-    const owned_game: u32 = 1182721388;
-    const fake_game_id: u32 = 1;
-
-    var mock_client = http.mock_client.init(io, allocator, .default);
-    const owned_games: GOGOwnedGames = .{ .owned = &.{ owned_game, fake_game_id } };
-    const formatted_body = std.json.fmt(owned_games, .{});
-
-    // will get freed in `web_api`
-    const response: http.response.Response = .{
+    const owned_game_parsed: GOGGame = .{
+        .title = owned_game_name,
+        .backgroundImage = "",
+    };
+    const formatted_owned_body = std.json.fmt(owned_game_parsed, .{});
+    const owned_response: http.response.Response = .{
         .allocator = allocator,
-        .body = try std.fmt.allocPrint(allocator, "{f}", .{formatted_body}),
+        .body = try std.fmt.allocPrint(allocator, "{f}", .{formatted_owned_body}),
         .status = .ok,
     };
 
-    try mock_client.registerMockResponse(.GET, "https://embed.gog.com/user/data/games", .{}, response);
+    try mock_client.registerMockResponse(.GET, "https://embed.gog.com/user/data/games", .{}, games_response);
+    try mock_client.registerMockResponse(.GET, "/account/gameDetails/{d}.json", .{owned_game}, owned_response);
 
     var web_api: GOGWebAPI = .init(mock_client);
     defer web_api.deinit();
@@ -401,4 +384,49 @@ test "Fetch Games - some owned" {
     defer parsedGames.deinit(allocator);
 
     try std.testing.expectEqual(1, parsedGames.games.items.len);
+    try std.testing.expectEqualStrings(owned_game_name, parsedGames.games.items[0].value.title);
+}
+
+test "Fetch Games - some owned" {
+    const io = std.testing.io;
+    const allocator = std.testing.allocator;
+
+    // `curl -L 'https://www.gog.com/en/game/astro_burn_demo' 2>/dev/null | grep '"sku":.*' | grep -o "[0-9]*"` - make sure you own this game (it is free)
+    const owned_game: u32 = 1182721388;
+    const owned_game_name = "Astro Burn (DEMO)";
+    const fake_game_id: u32 = 1;
+
+    var mock_client = http.mock_client.init(io, allocator, .default);
+
+    const owned_games: GOGOwnedGames = .{ .owned = &.{ owned_game, fake_game_id } };
+    const formatted_games_body = std.json.fmt(owned_games, .{});
+    // will get freed in `web_api`
+    const games_response: http.response.Response = .{
+        .allocator = allocator,
+        .body = try std.fmt.allocPrint(allocator, "{f}", .{formatted_games_body}),
+        .status = .ok,
+    };
+
+    const owned_game_parsed: GOGGame = .{
+        .title = owned_game_name,
+        .backgroundImage = "",
+    };
+    const formatted_owned_body = std.json.fmt(owned_game_parsed, .{});
+    const owned_response: http.response.Response = .{
+        .allocator = allocator,
+        .body = try std.fmt.allocPrint(allocator, "{f}", .{formatted_owned_body}),
+        .status = .ok,
+    };
+
+    try mock_client.registerMockResponse(.GET, "https://embed.gog.com/user/data/games", .{}, games_response);
+    try mock_client.registerMockResponse(.GET, "/account/gameDetails/{d}.json", .{owned_game}, owned_response);
+
+    var web_api: GOGWebAPI = .init(mock_client);
+    defer web_api.deinit();
+
+    var parsedGames = try web_api.getGames(io, allocator);
+    defer parsedGames.deinit(allocator);
+
+    try std.testing.expectEqual(1, parsedGames.games.items.len);
+    try std.testing.expectEqualStrings(owned_game_name, parsedGames.games.items[0].value.title);
 }
