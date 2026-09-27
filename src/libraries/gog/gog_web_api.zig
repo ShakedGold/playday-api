@@ -6,6 +6,8 @@ const http = @import("http");
 const models = @import("models");
 const utils = @import("utils");
 
+const log = std.log.scoped(.gog_web_api);
+
 const GOG_AUTH_API_BASE = "https://auth.gog.com";
 const GOG_API_BASE = "https://embed.gog.com";
 const GOG_QUERY_PARAMS = "client_id=46899977096215655&client_secret=9d85c43b1482497dbbce61f6e4aa173a433796eeae2ca8c5f6129f2dc4de46d9";
@@ -27,21 +29,21 @@ const LoginResult = struct {
 };
 
 const GOGOwnedGames = struct {
-    owned: []u32,
+    owned: []const u32,
 };
 const GOGGame = struct {
     title: []const u8,
     backgroundImage: []const u8,
 };
 const ParsedGOGGames = struct {
-    games: []std.json.Parsed(GOGGame),
+    games: std.ArrayList(std.json.Parsed(GOGGame)),
 
     pub fn deinit(self: *@This(), allocator: std.mem.Allocator) void {
-        for (self.games) |*game| {
+        for (self.games.items) |game| {
             game.deinit();
         }
 
-        allocator.free(self.games);
+        self.games.deinit(allocator);
 
         self.* = undefined;
     }
@@ -148,10 +150,8 @@ pub const GOGWebAPI = struct {
     client: http.client.Client,
     tokens: ?std.json.Parsed(TokenResponse) = null,
 
-    pub fn init(io: std.Io, allocator: std.mem.Allocator) @This() {
-        return .{
-            .client = .init(io, allocator),
-        };
+    pub fn init(client: http.client.ClientType) @This() {
+        return .{ .client = .init(client) };
     }
 
     pub fn deinit(self: *@This()) void {
@@ -215,7 +215,7 @@ pub const GOGWebAPI = struct {
         return self.retrieveNewTokens(io, allocator);
     }
 
-    fn fetch(self: *@This(), method: std.http.Method, comptime endpoint: []const u8, params: anytype, allocator: std.mem.Allocator) !http.response.Response {
+    fn fetch(self: *@This(), comptime method: std.http.Method, comptime endpoint: []const u8, params: anytype, allocator: std.mem.Allocator) !http.response.Response {
         const tokens = self.tokens orelse return error.TokensDoNotExist;
 
         const authorization_header = try std.fmt.allocPrint(allocator, "Bearer {s}", .{tokens.value.access_token});
@@ -248,6 +248,10 @@ pub const GOGWebAPI = struct {
         var response = try self.fetch(.GET, "/account/gameDetails/{d}.json", .{gameID}, allocator);
         defer response.deinit();
 
+        if (std.mem.eql(u8, response.body, "[]")) {
+            return error.GameNotFound;
+        }
+
         return std.json.parseFromSlice(GOGGame, allocator, response.body, .{ .allocate = .alloc_always, .ignore_unknown_fields = true });
     }
 
@@ -260,24 +264,138 @@ pub const GOGWebAPI = struct {
         const gameIDs = try self.getGameIDs(allocator);
         defer gameIDs.deinit();
 
-        const games = try allocator.alloc(std.json.Parsed(GOGGame), gameIDs.value.owned.len);
+        var parsedGogGames: ParsedGOGGames = .{ .games = try .initCapacity(allocator, gameIDs.value.owned.len) };
+        errdefer parsedGogGames.deinit(allocator);
 
-        for (gameIDs.value.owned, 0..) |gameID, index| {
-            games[index] = try self.getGameFromID(gameID, allocator);
+        for (gameIDs.value.owned) |gameID| {
+            const game = self.getGameFromID(gameID, allocator) catch |err| switch (err) {
+                error.GameNotFound => {
+                    log.warn("Game not found: id={d}", .{gameID});
+                    continue;
+                },
+                else => return err,
+            };
+
+            parsedGogGames.games.appendAssumeCapacity(game);
         }
 
-        return .{ .games = games };
+        return parsedGogGames;
     }
 };
 
-test "Fetch Games" {
+test "Fetch Games - 0 games" {
     const io = std.testing.io;
     const allocator = std.testing.allocator;
 
-    // TODO: Add an IO interface, or something else that can MOCK the client and return a known game list, then verify it.
-    var web_api: GOGWebAPI = .init(io, allocator);
+    var mock_client = http.mock_client.init(io, allocator, .default);
+
+    const owned_games: GOGOwnedGames = .{ .owned = &.{} };
+    const formatted_body = std.json.fmt(owned_games, .{});
+
+    // will get freed in `web_api`
+    const response: http.response.Response = .{
+        .allocator = allocator,
+        .body = try std.fmt.allocPrint(allocator, "{f}", .{formatted_body}),
+        .status = .ok,
+    };
+
+    try mock_client.registerMockResponse(.GET, "https://embed.gog.com/user/data/games", .{}, response);
+
+    var web_api: GOGWebAPI = .init(mock_client);
     defer web_api.deinit();
 
     var parsedGames = try web_api.getGames(io, allocator);
     defer parsedGames.deinit(allocator);
+
+    try std.testing.expectEqual(0, parsedGames.games.len);
+}
+
+test "Fetch Games - Game not found" {
+    const io = std.testing.io;
+    const allocator = std.testing.allocator;
+
+    const fake_game_id = 1;
+
+    var mock_client = http.mock_client.init(io, allocator, .default);
+    const owned_games: GOGOwnedGames = .{ .owned = &.{fake_game_id} };
+    const formatted_body = std.json.fmt(owned_games, .{});
+
+    // will get freed in `web_api`
+    const response: http.response.Response = .{
+        .allocator = allocator,
+        .body = try std.fmt.allocPrint(allocator, "{f}", .{formatted_body}),
+        .status = .ok,
+    };
+
+    try mock_client.registerMockResponse(.GET, "https://embed.gog.com/user/data/games", .{}, response);
+
+    var web_api: GOGWebAPI = .init(mock_client);
+    defer web_api.deinit();
+
+    _ = web_api.getGames(io, allocator) catch |err| switch (err) {
+        error.GameNotFound => return,
+        else => return err,
+    };
+
+    // We want it to fail
+    return error.GetGamesSucceeded;
+}
+
+test "Fetch Games - 1 game" {
+    const io = std.testing.io;
+    const allocator = std.testing.allocator;
+
+    // `curl -L 'https://www.gog.com/en/game/astro_burn_demo' 2>/dev/null | grep '"sku":.*' | grep -o "[0-9]*"` - make sure you own this game (it is free)
+    const owned_game: u32 = 1182721388;
+
+    var mock_client = http.mock_client.init(io, allocator, .default);
+    const owned_games: GOGOwnedGames = .{ .owned = &.{owned_game} };
+    const formatted_body = std.json.fmt(owned_games, .{});
+
+    // will get freed in `web_api`
+    const response: http.response.Response = .{
+        .allocator = allocator,
+        .body = try std.fmt.allocPrint(allocator, "{f}", .{formatted_body}),
+        .status = .ok,
+    };
+
+    try mock_client.registerMockResponse(.GET, "https://embed.gog.com/user/data/games", .{}, response);
+
+    var web_api: GOGWebAPI = .init(mock_client);
+    defer web_api.deinit();
+
+    var parsedGames = try web_api.getGames(io, allocator);
+    defer parsedGames.deinit(allocator);
+
+    try std.testing.expectEqual(1, parsedGames.games.len);
+}
+
+test "Fetch Games - some owned" {
+    const io = std.testing.io;
+    const allocator = std.testing.allocator;
+
+    // `curl -L 'https://www.gog.com/en/game/astro_burn_demo' 2>/dev/null | grep '"sku":.*' | grep -o "[0-9]*"` - make sure you own this game (it is free)
+    const owned_game: u32 = 1182721388;
+    const fake_game_id: u32 = 1;
+
+    var mock_client = http.mock_client.init(io, allocator, .default);
+    const owned_games: GOGOwnedGames = .{ .owned = &.{ owned_game, fake_game_id } };
+    const formatted_body = std.json.fmt(owned_games, .{});
+
+    // will get freed in `web_api`
+    const response: http.response.Response = .{
+        .allocator = allocator,
+        .body = try std.fmt.allocPrint(allocator, "{f}", .{formatted_body}),
+        .status = .ok,
+    };
+
+    try mock_client.registerMockResponse(.GET, "https://embed.gog.com/user/data/games", .{}, response);
+
+    var web_api: GOGWebAPI = .init(mock_client);
+    defer web_api.deinit();
+
+    var parsedGames = try web_api.getGames(io, allocator);
+    defer parsedGames.deinit(allocator);
+
+    try std.testing.expectEqual(1, parsedGames.games.items.len);
 }
