@@ -37,6 +37,7 @@ pub fn fetch(self: *@This(), comptime method: std.http.Method, comptime format: 
         .response_writer = &body.writer,
         .payload = options.body,
         .extra_headers = options.extra_headers,
+        .redirect_behavior = options.redirect_behavior,
     });
     try body.writer.flush();
 

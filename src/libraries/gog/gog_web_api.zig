@@ -12,6 +12,7 @@ const GOG_AUTH_API_BASE = "https://auth.gog.com";
 const GOG_API_BASE = "https://embed.gog.com";
 const GOG_QUERY_PARAMS = "client_id=46899977096215655&client_secret=9d85c43b1482497dbbce61f6e4aa173a433796eeae2ca8c5f6129f2dc4de46d9";
 const GOG_REDIRECT_URL = GOG_API_BASE ++ "/on_login_success?origin=client";
+const AMOUNT_OF_RETRIES = 1;
 
 const chrome_path = switch (builtin.target.os.tag) {
     .linux => "chromium-browser",
@@ -128,6 +129,8 @@ fn login(io: std.Io, allocator: std.mem.Allocator) ![]const u8 {
     try gotoLoginPage(&session, allocator);
 
     const code = try getCodeFromSession(&session, allocator);
+    errdefer allocator.free(code);
+
     return code;
 }
 
@@ -177,6 +180,11 @@ pub const GOGWebAPI = struct {
         var response = try self.client.get(GOG_AUTH_API_BASE ++ "/token?" ++ GOG_QUERY_PARAMS ++ "&grant_type={s}&{s}", .{ refreshType, other_params }, .empty);
         defer response.deinit();
 
+        if (response.status != .ok) {
+            log.err("[refresh token] Failed to refresh: {s}", .{refreshType});
+            return error.RefreshingTokenFailed;
+        }
+
         const tokens = try std.json.parseFromSlice(TokenResponse, allocator, response.body, .{ .ignore_unknown_fields = true, .allocate = .alloc_always });
         return tokens;
     }
@@ -215,44 +223,88 @@ pub const GOGWebAPI = struct {
         return self.retrieveNewTokens(io, allocator);
     }
 
-    fn fetch(self: *@This(), comptime method: std.http.Method, comptime endpoint: []const u8, params: anytype, allocator: std.mem.Allocator) !http.response.Response {
+    fn fetch(self: *@This(), comptime method: std.http.Method, comptime endpoint: []const u8, params: anytype, allocator: std.mem.Allocator, request_options: http.client.HTTPOptions) !http.response.Response {
         const tokens = self.tokens orelse return error.TokensDoNotExist;
 
         const authorization_header = try std.fmt.allocPrint(allocator, "Bearer {s}", .{tokens.value.access_token});
         defer allocator.free(authorization_header);
 
+        var options = request_options;
+
+        const extra_headers = try allocator.alloc(std.http.Header, request_options.extra_headers.len + 1);
+        defer allocator.free(extra_headers);
+
+        @memcpy(extra_headers[0..request_options.extra_headers.len], request_options.extra_headers);
+        extra_headers[request_options.extra_headers.len] = .{
+            .name = "Authorization",
+            .value = authorization_header,
+        };
+
+        options.extra_headers = extra_headers;
+
         return self.client.fetch(
             method,
             GOG_API_BASE ++ endpoint,
             params,
-            .{
-                .extra_headers = &.{
-                    .{
-                        .name = "Authorization",
-                        .value = authorization_header,
-                    },
-                },
-            },
+            options,
         );
     }
 
     /// Returns the list of game ids from gog, caller owns the memory, need to call `deinit`
-    fn getGameIDs(self: *@This(), allocator: std.mem.Allocator) !std.json.Parsed(GOGOwnedGames) {
-        var response = try self.fetch(.GET, "/user/data/games", .{}, allocator);
-        defer response.deinit();
+    fn getGameIDs(self: *@This(), io: std.Io, allocator: std.mem.Allocator) !std.json.Parsed(GOGOwnedGames) {
+        for (0..AMOUNT_OF_RETRIES) |_| {
+            var response = try self.fetch(.GET, "/user/data/games", .{}, allocator, .{ .redirect_behavior = .unhandled });
+            defer response.deinit();
 
-        return std.json.parseFromSlice(GOGOwnedGames, allocator, response.body, .{ .allocate = .alloc_always });
-    }
+            if (response.status != .ok) {
+                log.warn("[/user/data/games]: response status code = {s}({d})", .{ http.response.statusName(response.status), response.status });
 
-    fn getGameFromID(self: *@This(), gameID: u32, allocator: std.mem.Allocator) !std.json.Parsed(GOGGame) {
-        var response = try self.fetch(.GET, "/account/gameDetails/{d}.json", .{gameID}, allocator);
-        defer response.deinit();
+                if (response.status == .found) {
+                    // This means that the access token is invalid
+                    try self.refreshTokens(io, allocator);
 
-        if (std.mem.eql(u8, response.body, "[]")) {
-            return error.GameNotFound;
+                    // Try again
+                    continue;
+                } else {
+                    return error.RequestFailed;
+                }
+            }
+
+            return std.json.parseFromSlice(GOGOwnedGames, allocator, response.body, .{ .allocate = .alloc_always });
         }
 
-        return std.json.parseFromSlice(GOGGame, allocator, response.body, .{ .allocate = .alloc_always, .ignore_unknown_fields = true });
+        return error.ExceededRetries;
+    }
+
+    fn getGameFromID(self: *@This(), gameID: u32, io: std.Io, allocator: std.mem.Allocator) !std.json.Parsed(GOGGame) {
+        for (0..AMOUNT_OF_RETRIES) |_| {
+            var response = try self.fetch(.GET, "/account/gameDetails/{d}.json", .{gameID}, allocator, .{ .redirect_behavior = .unhandled });
+            defer response.deinit();
+
+            if (response.status != .ok) {
+                log.warn("[id={d}]: response status code = {s}({d})", .{ gameID, http.response.statusName(response.status), response.status });
+
+                if (response.status == .found) {
+                    // This means that the access token is invalid
+                    try self.refreshTokens(io, allocator);
+
+                    // Try again
+                    continue;
+                } else {
+                    return error.RequestFailed;
+                }
+            }
+
+            if (std.mem.eql(u8, response.body, "[]")) {
+                return error.GameNotFound;
+            }
+
+            log.debug("[id={d}] response: {s}", .{ gameID, response.body });
+
+            return std.json.parseFromSlice(GOGGame, allocator, response.body, .{ .allocate = .alloc_always, .ignore_unknown_fields = true });
+        }
+
+        return error.ExceededRetries;
     }
 
     /// Returns a slice of GOGGame's. caller owns memory and needs to call `deinit`
@@ -261,14 +313,14 @@ pub const GOGWebAPI = struct {
             try self.refreshTokens(io, allocator);
         }
 
-        const gameIDs = try self.getGameIDs(allocator);
+        const gameIDs = try self.getGameIDs(io, allocator);
         defer gameIDs.deinit();
 
         var parsedGogGames: ParsedGOGGames = .{ .games = try .initCapacity(allocator, gameIDs.value.owned.len) };
         errdefer parsedGogGames.deinit(allocator);
 
         for (gameIDs.value.owned) |gameID| {
-            const game = self.getGameFromID(gameID, allocator) catch |err| switch (err) {
+            const game = self.getGameFromID(gameID, io, allocator) catch |err| switch (err) {
                 error.GameNotFound => {
                     log.warn("Game not found: id={d}", .{gameID});
                     continue;
@@ -430,3 +482,45 @@ test "Fetch Games - some owned" {
     try std.testing.expectEqual(1, parsedGames.games.items.len);
     try std.testing.expectEqualStrings(owned_game_name, parsedGames.games.items[0].value.title);
 }
+
+test "Invalid tokens" {
+    const io = std.testing.io;
+    const allocator = std.testing.allocator;
+
+    // `curl -L 'https://www.gog.com/en/game/astro_burn_demo' 2>/dev/null | grep '"sku":.*' | grep -o "[0-9]*"` - make sure you own this game (it is free)
+    const owned_game: u32 = 1182721388;
+    const owned_game_name = "Astro Burn (DEMO)";
+    _ = owned_game_name; // autofix
+
+    const owned_games: GOGOwnedGames = .{ .owned = &.{owned_game} };
+    const formatted_games_body = std.json.fmt(owned_games, .{});
+    // will get freed in `web_api`
+    const games_response: http.response.Response = .{
+        .allocator = allocator,
+        .body = try std.fmt.allocPrint(allocator, "{f}", .{formatted_games_body}),
+        .status = .ok,
+    };
+
+    const tokens: TokenResponse = .{ .access_token = "abcdefghijklmnopqrstuvwxyz", .refresh_token = "abcdefghijklmnopqrstuvwxyz" };
+    const formatted_token_body = std.json.fmt(tokens, .{});
+
+    var mock_client = http.mock_client.init(io, allocator, .default);
+    for (0..AMOUNT_OF_RETRIES + 1) |_| {
+        const token_response: http.response.Response = .{
+            .allocator = allocator,
+            .body = try std.fmt.allocPrint(allocator, "{f}", .{formatted_token_body}),
+            .status = .ok,
+        };
+        try mock_client.registerMockResponse(.GET, "https://auth.gog.com/token", .{}, token_response);
+    }
+
+    try mock_client.registerMockResponse(.GET, "https://embed.gog.com/user/data/games", .{}, games_response);
+
+    var web_api: GOGWebAPI = .init(mock_client);
+    defer web_api.deinit();
+
+    try std.testing.expectError(error.ExceededRetries, web_api.getGames(io, allocator));
+}
+
+// TODO: add a test for when only one of the refresh token requests fail, then it should succeed in finding the game
+// TODO: remove the chrome open for tests that do not need it

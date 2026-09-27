@@ -60,7 +60,7 @@ pub fn connect(io: std.Io, allocator: std.mem.Allocator) !websocket.Client {
     }
 
     if (response.status != .ok) {
-        log.err("response failed with status: {any}({d})", .{ http.response.statusName(response.status), response.status });
+        log.err("response failed with status: {s}({d})", .{ http.response.statusName(response.status), response.status });
         return error.CDPRequestFailed;
     }
 

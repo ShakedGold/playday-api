@@ -46,7 +46,9 @@ pub fn fetch(self: *@This(), comptime method: std.http.Method, comptime format: 
     const url = try std.fmt.allocPrint(self.allocator, format, args);
     defer self.allocator.free(url);
 
-    for (self.mockResponses.items) |mock_request| {
+    std.debug.print("[fetch] url={s}\n", .{url});
+
+    for (self.mockResponses.items, 0..) |mock_request, index| {
         if (method != mock_request.method) {
             continue;
         }
@@ -54,6 +56,10 @@ pub fn fetch(self: *@This(), comptime method: std.http.Method, comptime format: 
         if (std.mem.find(u8, url, mock_request.url) == null) {
             continue;
         }
+
+        // Remove from list, since the response will most likely be deinit-ed
+        const removed = self.mockResponses.swapRemove(index);
+        self.allocator.free(removed.url);
 
         return mock_request.response;
     }

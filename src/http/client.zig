@@ -8,12 +8,11 @@ const response = @import("response.zig");
 const log = std.log.scoped(.client);
 
 pub const HTTPOptions = struct {
-    extra_headers: []const std.http.Header,
+    extra_headers: []const std.http.Header = &.{},
     body: ?[]const u8 = null,
+    redirect_behavior: ?std.http.Client.Request.RedirectBehavior = null,
 
-    pub const empty: HTTPOptions = .{
-        .extra_headers = &.{},
-    };
+    pub const empty: HTTPOptions = .{};
 };
 
 pub const ClientType = if (builtin.is_test) mock_client.MockClient else http_client.HTTPClient;
