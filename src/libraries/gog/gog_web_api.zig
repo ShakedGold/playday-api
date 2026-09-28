@@ -12,7 +12,7 @@ const GOG_AUTH_API_BASE = "https://auth.gog.com";
 const GOG_API_BASE = "https://embed.gog.com";
 const GOG_QUERY_PARAMS = "client_id=46899977096215655&client_secret=9d85c43b1482497dbbce61f6e4aa173a433796eeae2ca8c5f6129f2dc4de46d9";
 const GOG_REDIRECT_URL = GOG_API_BASE ++ "/on_login_success?origin=client";
-const AMOUNT_OF_RETRIES = 1;
+const AMOUNT_OF_RETRIES = 2;
 
 const chrome_path = switch (builtin.target.os.tag) {
     .linux => "chromium-browser",
@@ -185,8 +185,7 @@ pub const GOGWebAPI = struct {
             return error.RefreshingTokenFailed;
         }
 
-        const tokens = try std.json.parseFromSlice(TokenResponse, allocator, response.body, .{ .ignore_unknown_fields = true, .allocate = .alloc_always });
-        return tokens;
+        return std.json.parseFromSlice(TokenResponse, allocator, response.body, .{ .ignore_unknown_fields = true, .allocate = .alloc_always });
     }
 
     fn retrieveNewTokens(self: *@This(), io: std.Io, allocator: std.mem.Allocator) !void {
@@ -205,14 +204,15 @@ pub const GOGWebAPI = struct {
     }
 
     fn newRefreshToken(self: *@This(), allocator: std.mem.Allocator) !void {
-        const tokens = self.tokens orelse return error.RefreshTokensDoNotExist;
-        // Freeing the old tokens
-        defer tokens.deinit();
+        const old_tokens = self.tokens orelse return error.RefreshTokensDoNotExist;
 
         self.tokens = try self.refreshToken(
             allocator,
-            .{ .refresh = .{ .refresh_token = tokens.value.refresh_token } },
+            .{ .refresh = .{ .refresh_token = old_tokens.value.refresh_token } },
         );
+
+        // Freeing the old tokens
+        old_tokens.deinit();
     }
 
     fn refreshTokens(self: *@This(), io: std.Io, allocator: std.mem.Allocator) !void {
@@ -261,7 +261,18 @@ pub const GOGWebAPI = struct {
 
                 if (response.status == .found) {
                     // This means that the access token is invalid
-                    try self.refreshTokens(io, allocator);
+                    self.refreshTokens(io, allocator) catch |err| switch (err) {
+                        error.RefreshingTokenFailed => {
+                            if (self.tokens) |tokens| {
+                                tokens.deinit();
+                                self.tokens = null;
+
+                                // Try one last time
+                                try self.refreshTokens(io, allocator);
+                            }
+                        },
+                        else => return err,
+                    };
 
                     // Try again
                     continue;
@@ -286,7 +297,18 @@ pub const GOGWebAPI = struct {
 
                 if (response.status == .found) {
                     // This means that the access token is invalid
-                    try self.refreshTokens(io, allocator);
+                    self.refreshTokens(io, allocator) catch |err| switch (err) {
+                        error.RefreshingTokenFailed => {
+                            if (self.tokens) |tokens| {
+                                tokens.deinit();
+                                self.tokens = null;
+
+                                // Try one last time
+                                try self.refreshTokens(io, allocator);
+                            }
+                        },
+                        else => return err,
+                    };
 
                     // Try again
                     continue;
@@ -522,5 +544,24 @@ test "Invalid tokens" {
     try std.testing.expectError(error.ExceededRetries, web_api.getGames(io, allocator));
 }
 
-// TODO: add a test for when only one of the refresh token requests fail, then it should succeed in finding the game
-// TODO: remove the chrome open for tests that do not need it
+test "Only one invalid token" {
+    const io = std.testing.io;
+    const allocator = std.testing.allocator;
+
+    const tokens: TokenResponse = .{ .access_token = "abcdefghijklmnopqrstuvwxyz", .refresh_token = "abcdefghijklmnopqrstuvwxyz" };
+    const formatted_token_body = std.json.fmt(tokens, .{});
+
+    var mock_client = http.mock_client.init(io, allocator, .default);
+    const token_response: http.response.Response = .{
+        .allocator = allocator,
+        .body = try std.fmt.allocPrint(allocator, "{f}", .{formatted_token_body}),
+        .status = .ok,
+    };
+    try mock_client.registerMockResponse(.GET, "https://auth.gog.com/token", .{}, token_response);
+
+    var web_api: GOGWebAPI = .init(mock_client);
+    defer web_api.deinit();
+
+    var parsedGames = try web_api.getGames(io, allocator);
+    defer parsedGames.deinit(allocator);
+}
