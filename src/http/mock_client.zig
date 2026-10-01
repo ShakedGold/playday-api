@@ -14,6 +14,26 @@ const MockRequest = struct {
     response: response.Response,
 };
 
+pub fn MockJsonResponse(comptime PayloadType: type) type {
+    return struct {
+        value: PayloadType,
+        status: std.http.Status = .ok,
+
+        pub fn getResponse(self: @This(), allocator: std.mem.Allocator) response.Response {
+            const formatted_body = std.json.fmt(self.value, .{});
+            const body =
+                std.fmt.allocPrint(allocator, "{f}", .{formatted_body}) catch
+                    std.debug.panic("Cannot format body of {s}, data: {any}", .{ @typeName(PayloadType), self.value });
+
+            return .{
+                .allocator = allocator,
+                .body = body,
+                .status = self.status,
+            };
+        }
+    };
+}
+
 allocator: std.mem.Allocator,
 io: std.Io,
 mockResponses: std.ArrayList(MockRequest),
