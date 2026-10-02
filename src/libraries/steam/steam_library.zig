@@ -62,27 +62,18 @@ pub const SteamLibrary = struct {
         const uuid = utils.uuid.uuidV4(io);
         @memcpy(gameId, &uuid);
 
-        return .{
-            .game = .{
-                .id = gameId,
-                .name = name,
-                .playtime = apiGame.playtime_forever,
-                .installed_location = installedLocation,
-                .last_played = lastPlayed,
-            },
-            .library = .{
-                .id = gameId,
-                .library = .{
-                    .steam = .{
-                        .appid = id,
-                    },
-                },
-            },
-            .metadata = .{
-                .id = gameId,
-                .icon = icon,
-            },
-        };
+        const game: models.game.Game = .init(.{
+            .id = gameId,
+            .name = name,
+            .playtime = apiGame.playtime_forever,
+            .installed_location = installedLocation,
+            .last_played = lastPlayed,
+        });
+
+        game.library.library.steam.appid = gameId;
+        game.metadata.icon = icon;
+
+        return game;
     }
 
     fn getGameTask(self: *SteamLibrary, io: std.Io, allocator: std.mem.Allocator, games: []?models.game.Game, apiGame: *steam_web_api.APIGame, index: usize) void {

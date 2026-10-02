@@ -2,9 +2,11 @@ const std = @import("std");
 
 const models = @import("models");
 const steam = @import("steam");
+const gog = @import("gog");
 
 pub const Library = union(enum) {
     steam: steam.library.SteamLibrary,
+    gog: gog.library.GOGLibrary,
 
     pub fn init(
         comptime provider_type: std.meta.Tag(Library),

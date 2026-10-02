@@ -1,5 +1,56 @@
+const std = @import("std");
+
+const http = @import("http");
+const models = @import("models");
+const utils = @import("utils");
+
 const web_api = @import("gog_web_api.zig");
+
+const log = std.log.scoped(.gog_library);
 
 pub const GOGLibrary = struct {
     gog_web_api: web_api.GOGWebAPI,
+
+    pub fn init(io: std.Io, allocator: std.mem.Allocator) @This() {
+        return .{ .gog_web_api = .init(io, allocator, .{}) };
+    }
+
+    pub fn getGames(self: *@This(), io: std.Io, allocator: std.mem.Allocator) ![]?models.game.Game {
+        const apiGamesList = try self.gog_web_api.getGames(io, allocator);
+        defer apiGamesList.deinit(allocator);
+
+        log.info("Received: {d} games", .{apiGamesList.games.items.len});
+        const games = try allocator.alloc(?models.game.Game, apiGamesList.games.items.len);
+
+        // A caution measure, if we do not go over all of the items for whatever reason, we want them to be null so we wont put garbage data in the database
+        @memset(games, null);
+
+        for (apiGamesList.games.items, 0..) |*game, index| {
+            const gameId = try allocator.alloc(u8, 36);
+            const uuid = utils.uuid.uuidV4(io);
+            @memcpy(gameId, &uuid);
+
+            games[index] = .init(.{
+                .id = gameId,
+                .name = game.value.title,
+                .playtime = 0, // GOG does not expose playtime
+            });
+        }
+
+        return games;
+    }
+
+    pub fn deinit(self: *@This()) void {
+        self.gog_web_api.deinit();
+
+        self.* = undefined;
+    }
 };
+
+test "ABC" {
+    const io = std.testing.io;
+    const allocator = std.testing.allocator;
+
+    const library: GOGLibrary = .init(io, allocator);
+    _ = library; // autofix
+}

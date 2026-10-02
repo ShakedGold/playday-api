@@ -11,7 +11,9 @@ client: std.http.Client,
 allocator: std.mem.Allocator,
 io: std.Io,
 
-pub fn init(io: std.Io, allocator: std.mem.Allocator) @This() {
+const HTTPClientOptions = struct {};
+
+pub fn init(io: std.Io, allocator: std.mem.Allocator, _: HTTPClientOptions) @This() {
     return .{
         .client = std.http.Client{ .allocator = allocator, .io = io },
         .allocator = allocator,

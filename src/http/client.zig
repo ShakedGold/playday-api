@@ -16,6 +16,7 @@ pub const HTTPOptions = struct {
 };
 
 pub const ClientType = if (builtin.is_test) mock_client.MockClient else http_client.HTTPClient;
+pub const ClientOptionsType = if (builtin.is_test) mock_client.MockClientOptions else http_client.HTTPClient;
 
 pub const Client = struct {
     client: ClientType,

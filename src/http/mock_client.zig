@@ -39,7 +39,7 @@ io: std.Io,
 mockResponses: std.ArrayList(MockRequest),
 client: ?http_client.HTTPClient = null,
 
-const MockClientOptions = struct {
+pub const MockClientOptions = struct {
     create_client: bool = false,
 
     pub const default: @This() = .{ .create_client = true };
@@ -50,7 +50,7 @@ pub fn init(io: std.Io, allocator: std.mem.Allocator, options: MockClientOptions
         .allocator = allocator,
         .io = io,
         .mockResponses = .empty,
-        .client = if (options.create_client) .init(io, allocator) else null,
+        .client = if (options.create_client) .init(io, allocator, .{}) else null,
     };
 }
 

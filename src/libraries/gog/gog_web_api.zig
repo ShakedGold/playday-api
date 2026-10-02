@@ -148,12 +148,18 @@ const TokenResponse = struct {
     access_token: []const u8,
 };
 
+pub const GOGWebAPIOptions = struct {
+    client: ?http.client.ClientType = null,
+    options: ?http.client.ClientOptionsType = null,
+};
+
 pub const GOGWebAPI = struct {
-    client: http.client.Client,
+    client: http.client.ClientType,
     tokens: ?std.json.Parsed(TokenResponse) = null,
 
-    pub fn init(client: http.client.ClientType) @This() {
-        return .{ .client = .init(client) };
+    pub fn init(io: std.Io, allocator: std.mem.Allocator, options: GOGWebAPIOptions) @This() {
+        const gog_client: http.client.ClientType = options.client orelse .init(io, allocator, options.options orelse .{});
+        return .{ .client = gog_client };
     }
 
     pub fn deinit(self: *@This()) void {

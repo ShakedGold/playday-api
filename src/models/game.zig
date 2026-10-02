@@ -3,10 +3,36 @@ const std = @import("std");
 const db = @import("db");
 const fr = @import("fridge");
 
+pub const GameParams = struct {
+    id: []const u8,
+    name: []const u8,
+    playtime: u32,
+    installed_location: ?[]const u8 = null,
+    last_played: ?u64 = null,
+};
+
 pub const Game = struct {
     game: db.Game,
     library: db.LibraryData,
     metadata: db.GameMetadata,
+
+    pub fn init(params: GameParams) @This() {
+        return .{
+            .game = .{
+                .id = params.id,
+                .name = params.name,
+                .playtime = params.playtime,
+                .installed_location = params.installed_location,
+                .last_played = params.last_played,
+            },
+            .library = .{
+                .id = params.id,
+            },
+            .metadata = .{
+                .id = params.id,
+            },
+        };
+    }
 
     pub fn deinit(self: *@This(), allocator: std.mem.Allocator) void {
         self.game.deinit(allocator);
