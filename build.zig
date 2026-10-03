@@ -10,7 +10,16 @@ pub fn build(b: *std.Build) void {
         .target = target,
     });
 
-    const playday_vdf = b.dependency("playday_vdf", .{});
+    const use_local_deps = b.option(
+        bool,
+        "local-deps",
+        "Use local development dependencies",
+    ) orelse false;
+
+    const playday_vdf = if (use_local_deps)
+        b.dependency("playday_vdf_local", .{}).module("playday_vdf")
+    else
+        b.dependency("playday_vdf", .{}).module("playday_vdf");
 
     const http = b.addModule("http", .{
         .root_source_file = b.path("src/http/root.zig"),
@@ -60,7 +69,7 @@ pub fn build(b: *std.Build) void {
             .{ .name = "utils", .module = utils },
             .{ .name = "http", .module = http },
             .{ .name = "models", .module = models },
-            .{ .name = "playday_vdf", .module = playday_vdf.module("playday_vdf") },
+            .{ .name = "playday_vdf", .module = playday_vdf },
         },
     });
 
@@ -110,7 +119,7 @@ pub fn build(b: *std.Build) void {
             .{ .name = "libraries", .module = libraries },
             .{ .name = "metadata", .module = metadata },
             .{ .name = "utils", .module = utils },
-            .{ .name = "playday_vdf", .module = playday_vdf.module("playday_vdf") },
+            .{ .name = "playday_vdf", .module = playday_vdf },
         },
     });
 

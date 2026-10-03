@@ -44,6 +44,9 @@
             .url = "git+https://github.com/ShakedGold/playday-vdf.git#b5761288de78e4f81ab5d2fc8dca3b5d2c2e2f18",
             .hash = "playday_vdf-0.0.0-seW6kA-dAADmGkiw-UotRLZrmIY7XgH6XsPCrz2Pdl27",
         },
+        .playday_vdf_local = .{
+            .path = "../playday-vdf",
+        },
     },
     .paths = .{
         "build.zig",

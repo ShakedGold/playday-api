@@ -9,23 +9,28 @@ const steam_web_api = @import("steam_web_api.zig");
 
 const log = std.log.scoped(.steam_library);
 
-pub const SteamLibrary = struct {
-    steamAPI: *steam_web_api.SteamAPI,
-    steamLocal: *steam_local.SteamLocal,
+pub const SteamLibraryOptions = struct {
+    key: []const u8,
+    steamid: []const u8,
+    environ_map: *std.process.Environ.Map,
+};
 
-    pub fn init(steamAPI: *steam_web_api.SteamAPI, steamLocal: *steam_local.SteamLocal) SteamLibrary {
+pub const SteamLibrary = struct {
+    steamAPI: steam_web_api.SteamAPI,
+    steamLocal: steam_local.SteamLocal,
+
+    pub fn init(io: std.Io, allocator: std.mem.Allocator, options: SteamLibraryOptions) !SteamLibrary {
         return .{
-            .steamAPI = steamAPI,
-            .steamLocal = steamLocal,
+            .steamAPI = .init(io, allocator, options.key, options.steamid),
+            .steamLocal = try .init(io, allocator, options.environ_map),
         };
     }
 
     pub fn deinit(self: *SteamLibrary) void {
         self.steamAPI.deinit();
-        self.steamAPI.* = undefined;
-
         self.steamLocal.deinit();
-        self.steamLocal.* = undefined;
+
+        self.* = undefined;
     }
 
     fn getGame(self: *SteamLibrary, apiGame: *steam_web_api.APIGame, io: std.Io, allocator: std.mem.Allocator) !models.game.Game {
@@ -62,15 +67,15 @@ pub const SteamLibrary = struct {
         const uuid = utils.uuid.uuidV4(io);
         @memcpy(gameId, &uuid);
 
-        const game: models.game.Game = .init(.{
+        var game: models.game.Game = .init(.{
             .id = gameId,
             .name = name,
             .playtime = apiGame.playtime_forever,
             .installed_location = installedLocation,
             .last_played = lastPlayed,
+            .library = .{ .steam = .{ .appid = id } },
         });
 
-        game.library.library.steam.appid = gameId;
         game.metadata.icon = icon;
 
         return game;

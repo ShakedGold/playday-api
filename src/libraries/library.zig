@@ -1,8 +1,8 @@
 const std = @import("std");
 
+const gog = @import("gog");
 const models = @import("models");
 const steam = @import("steam");
-const gog = @import("gog");
 
 pub const Library = union(enum) {
     steam: steam.library.SteamLibrary,
@@ -11,7 +11,7 @@ pub const Library = union(enum) {
     pub fn init(
         comptime provider_type: std.meta.Tag(Library),
         args: anytype,
-    ) Library {
+    ) !Library {
         return switch (provider_type) {
             inline else => |tag| {
                 const name = @tagName(tag);
@@ -20,7 +20,7 @@ pub const Library = union(enum) {
                 return @unionInit(
                     Library,
                     name,
-                    @call(.auto, LibraryNameType.init, args),
+                    try @call(.auto, LibraryNameType.init, args),
                 );
             },
         };

@@ -10,7 +10,7 @@ pub const APIGame = struct {
     playtime_forever: u32,
     img_icon_url: []const u8,
 
-    pub fn fetchIcon(self: *APIGame, client: *http.client.Client, allocator: std.mem.Allocator) !?[]u8 {
+    pub fn fetchIcon(self: *APIGame, client: *http.client.ClientType, allocator: std.mem.Allocator) !?[]u8 {
         log.debug("Fetching: {s} https://media.steampowered.com/steamcommunity/public/images/apps/{d}/{s}.jpg", .{ self.name, self.appid, self.img_icon_url });
         var response = try client.get("https://media.steampowered.com/steamcommunity/public/images/apps/{d}/{s}.jpg", .{ self.appid, self.img_icon_url }, .empty);
         defer response.deinit();
@@ -50,14 +50,14 @@ pub const SteamAPI = struct {
     io: std.Io,
     key: []const u8,
     steamid: []const u8,
-    client: http.client.Client,
+    client: http.client.ClientType,
 
     pub fn init(io: std.Io, allocator: std.mem.Allocator, key: []const u8, steamid: []const u8) SteamAPI {
         return .{
             .allocator = allocator,
             .io = io,
             .key = key,
-            .client = .init(io, allocator),
+            .client = .init(io, allocator, .{}),
             .steamid = steamid,
         };
     }

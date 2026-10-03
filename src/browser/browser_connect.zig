@@ -43,7 +43,7 @@ pub fn launch(io: std.Io, path: []const u8) !std.process.Child {
 
 /// Connect a web socket client to the open browser, caller owns the client and should call .deinit o it
 pub fn connect(io: std.Io, allocator: std.mem.Allocator) !websocket.Client {
-    var client = http.http_client.HTTPClient.init(io, allocator);
+    var client = http.http_client.HTTPClient.init(io, allocator, .{});
     defer client.deinit();
 
     var connected: bool = false;

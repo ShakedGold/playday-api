@@ -31,7 +31,7 @@ pub const IGDB = struct {
 
     allocator: std.mem.Allocator,
     io: std.Io,
-    client: http.client.Client,
+    client: http.client.ClientType,
     lock: std.Io.RwLock,
 
     client_params: Params,
@@ -41,7 +41,7 @@ pub const IGDB = struct {
         return .{
             .io = io,
             .allocator = allocator,
-            .client = .init(io, allocator),
+            .client = .init(io, allocator, .{}),
             .lock = .init,
 
             .client_params = .{
@@ -72,7 +72,7 @@ pub const IGDB = struct {
 pub const IGDBRefresher = struct {
     allocator: std.mem.Allocator,
     io: std.Io,
-    client: http.client.Client,
+    client: http.client.ClientType,
     lock: *std.Io.RwLock,
 
     game: *models.game.Game,
@@ -85,7 +85,7 @@ pub const IGDBRefresher = struct {
         const self: @This() = .{
             .allocator = allocator,
             .io = io,
-            .client = .init(io, allocator),
+            .client = .init(io, allocator, .{}),
             .client_params = .{
                 .id = client_params.id,
                 .secret = client_params.secret,

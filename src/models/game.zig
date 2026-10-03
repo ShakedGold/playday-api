@@ -4,11 +4,12 @@ const db = @import("db");
 const fr = @import("fridge");
 
 pub const GameParams = struct {
-    id: []const u8,
-    name: []const u8,
+    id: []u8,
+    name: []u8,
     playtime: u32,
-    installed_location: ?[]const u8 = null,
+    installed_location: ?[]u8 = null,
     last_played: ?u64 = null,
+    library: db.LibraryData.Library,
 };
 
 pub const Game = struct {
@@ -27,6 +28,7 @@ pub const Game = struct {
             },
             .library = .{
                 .id = params.id,
+                .library = params.library,
             },
             .metadata = .{
                 .id = params.id,

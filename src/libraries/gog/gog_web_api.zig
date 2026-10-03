@@ -32,16 +32,21 @@ const LoginResult = struct {
 const GOGOwnedGames = struct {
     owned: []const u32,
 };
-const GOGGame = struct {
-    title: []const u8,
-    backgroundImage: []const u8,
+const OwnedGOGGame = struct {
+    title: []u8,
+    backgroundImage: []u8,
 };
+const GOGGame = struct {
+    id: u32,
+    owned_data: std.json.Parsed(OwnedGOGGame),
+};
+
 const ParsedGOGGames = struct {
-    games: std.ArrayList(std.json.Parsed(GOGGame)),
+    games: std.ArrayList(GOGGame),
 
     pub fn deinit(self: *@This(), allocator: std.mem.Allocator) void {
         for (self.games.items) |game| {
-            game.deinit();
+            game.owned_data.deinit();
         }
 
         self.games.deinit(allocator);
@@ -287,7 +292,7 @@ pub const GOGWebAPI = struct {
         return error.ExceededRetries;
     }
 
-    fn getGameFromID(self: *@This(), gameID: u32, io: std.Io, allocator: std.mem.Allocator) !std.json.Parsed(GOGGame) {
+    fn getGameFromID(self: *@This(), gameID: u32, io: std.Io, allocator: std.mem.Allocator) !std.json.Parsed(OwnedGOGGame) {
         for (0..AMOUNT_OF_RETRIES) |_| {
             var response = try self.fetch(.GET, "/account/gameDetails/{d}.json", .{gameID}, allocator, .{ .redirect_behavior = .unhandled });
             defer response.deinit();
@@ -298,7 +303,7 @@ pub const GOGWebAPI = struct {
                 }
 
                 log.debug("[id={d}] response: {s}", .{ gameID, response.body });
-                return std.json.parseFromSlice(GOGGame, allocator, response.body, .{ .allocate = .alloc_always, .ignore_unknown_fields = true });
+                return std.json.parseFromSlice(OwnedGOGGame, allocator, response.body, .{ .allocate = .alloc_always, .ignore_unknown_fields = true });
             }
 
             log.warn("[id={d}]: response status code = {s}({d})", .{ gameID, http.response.statusName(response.status), response.status });
@@ -323,7 +328,7 @@ pub const GOGWebAPI = struct {
         return error.ExceededRetries;
     }
 
-    /// Returns a slice of GOGGame's. caller owns memory and needs to call `deinit`
+    /// Returns a the list of web api games. caller owns memory and needs to call `deinit`
     pub fn getGames(self: *@This(), io: std.Io, allocator: std.mem.Allocator) !ParsedGOGGames {
         if (self.tokens == null) {
             try self.refreshTokens(io, allocator);
@@ -344,7 +349,7 @@ pub const GOGWebAPI = struct {
                 else => return err,
             };
 
-            parsedGogGames.games.appendAssumeCapacity(game);
+            parsedGogGames.games.appendAssumeCapacity(.{ .id = gameID, .owned_data = game });
         }
 
         // Report that no games have been found

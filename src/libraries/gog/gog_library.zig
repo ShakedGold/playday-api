@@ -11,12 +11,12 @@ const log = std.log.scoped(.gog_library);
 pub const GOGLibrary = struct {
     gog_web_api: web_api.GOGWebAPI,
 
-    pub fn init(io: std.Io, allocator: std.mem.Allocator) @This() {
-        return .{ .gog_web_api = .init(io, allocator, .{}) };
+    pub fn init(io: std.Io, allocator: std.mem.Allocator, webApiOptions: web_api.GOGWebAPIOptions) !@This() {
+        return .{ .gog_web_api = .init(io, allocator, webApiOptions) };
     }
 
     pub fn getGames(self: *@This(), io: std.Io, allocator: std.mem.Allocator) ![]?models.game.Game {
-        const apiGamesList = try self.gog_web_api.getGames(io, allocator);
+        var apiGamesList = try self.gog_web_api.getGames(io, allocator);
         defer apiGamesList.deinit(allocator);
 
         log.info("Received: {d} games", .{apiGamesList.games.items.len});
@@ -27,13 +27,16 @@ pub const GOGLibrary = struct {
 
         for (apiGamesList.games.items, 0..) |*game, index| {
             const gameId = try allocator.alloc(u8, 36);
+            errdefer allocator.free(gameId);
+
             const uuid = utils.uuid.uuidV4(io);
             @memcpy(gameId, &uuid);
 
             games[index] = .init(.{
                 .id = gameId,
-                .name = game.value.title,
+                .name = try allocator.dupe(u8, game.owned_data.value.title),
                 .playtime = 0, // GOG does not expose playtime
+                .library = .{ .gog = .{ .id = game.id } },
             });
         }
 
@@ -47,10 +50,18 @@ pub const GOGLibrary = struct {
     }
 };
 
-test "ABC" {
+test "GOG Library - get games" {
     const io = std.testing.io;
     const allocator = std.testing.allocator;
 
-    const library: GOGLibrary = .init(io, allocator);
-    _ = library; // autofix
+    var library: GOGLibrary = .init(io, allocator, .{ .options = .{ .create_client = true } });
+    defer library.deinit();
+
+    const games = try library.getGames(io, allocator);
+    defer allocator.free(games);
+
+    for (games) |possibleGame| {
+        var game = possibleGame orelse continue;
+        game.deinit(allocator);
+    }
 }
