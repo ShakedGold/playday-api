@@ -33,7 +33,7 @@ pub const SteamStore = struct {
 
     io: std.Io,
     allocator: std.mem.Allocator,
-    client: http.client.Client,
+    client: http.client.ClientType,
 
     pub fn init(io: std.Io, allocator: std.mem.Allocator, params: Params) @This() {
         _ = params;
@@ -41,7 +41,7 @@ pub const SteamStore = struct {
         return .{
             .io = io,
             .allocator = allocator,
-            .client = .init(io, allocator),
+            .client = .init(io, allocator, .{}),
         };
     }
 
@@ -60,7 +60,7 @@ pub const SteamStoreRefresher = struct {
     io: std.Io,
 
     game: *models.game.Game,
-    client: http.client.Client,
+    client: http.client.ClientType,
     game_page: ?std.json.Parsed(SteamStoreResponse) = null,
 
     pub fn init(
@@ -71,7 +71,7 @@ pub const SteamStoreRefresher = struct {
         return .{
             .io = io,
             .allocator = allocator,
-            .client = .init(io, allocator),
+            .client = .init(io, allocator, .{}),
             .game = game,
         };
     }
@@ -89,7 +89,7 @@ pub const SteamStoreRefresher = struct {
 
         try std.Uri.Component.percentEncode(
             &writer,
-            self.game.name,
+            self.game.game.name,
             isUnreserved,
         );
 
@@ -107,17 +107,17 @@ pub const SteamStoreRefresher = struct {
         defer root.deinit();
 
         const items = root.value.object.get("items") orelse {
-            log.err("'items' not found in json object of store search ({s})", .{self.game.name});
+            log.err("'items' not found in json object of store search ({s})", .{self.game.game.name});
             return error.NotFound;
         };
 
         if (items.array.items.len == 0) {
-            log.err("{s} is not found in the steam store", .{self.game.name});
+            log.err("{s} is not found in the steam store", .{self.game.game.name});
             return error.NotFound;
         }
 
         const itemId = items.array.items[0].object.get("id") orelse {
-            log.err("item id for {s} is not found in the steam store", .{self.game.name});
+            log.err("item id for {s} is not found in the steam store", .{self.game.game.name});
             return error.NotFound;
         };
 

@@ -12,7 +12,7 @@ pub fn deinit(self: *Response) void {
     self.* = undefined;
 }
 
-pub fn statusName(status: std.http.Status) ?[]const u8 {
+pub fn statusName(status: std.http.Status) []const u8 {
     const enum_info = @typeInfo(std.http.Status).@"enum";
     const value = @intFromEnum(status);
 
@@ -22,5 +22,5 @@ pub fn statusName(status: std.http.Status) ?[]const u8 {
         }
     }
 
-    return null;
+    return "(null)";
 }

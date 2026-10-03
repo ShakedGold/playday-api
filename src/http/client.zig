@@ -1,79 +1,44 @@
 const std = @import("std");
+const builtin = @import("builtin");
 
+const http_client = @import("http_client.zig");
+const mock_client = @import("mock_client.zig");
 const response = @import("response.zig");
 
-const log = std.log.scoped(.http_client);
+const log = std.log.scoped(.client);
 
-pub const Client = @This();
-
-client: std.http.Client,
-allocator: std.mem.Allocator,
-io: std.Io,
-
-pub fn init(io: std.Io, allocator: std.mem.Allocator) Client {
-    return .{
-        .client = std.http.Client{ .allocator = allocator, .io = io },
-        .allocator = allocator,
-        .io = io,
-    };
-}
-
-const HttpOptions = struct {
-    extra_headers: []const std.http.Header,
+pub const HTTPOptions = struct {
+    extra_headers: []const std.http.Header = &.{},
     body: ?[]const u8 = null,
+    redirect_behavior: ?std.http.Client.Request.RedirectBehavior = null,
 
-    pub const empty: HttpOptions = .{
-        .extra_headers = &.{},
-    };
+    pub const empty: HTTPOptions = .{};
 };
 
-/// The response needs to be `.deinit()` by the caller
-pub fn fetch(self: *Client, method: std.http.Method, comptime format: []const u8, args: anytype, options: HttpOptions) !response.Response {
-    log.debug("Fetching: " ++ format, args);
+pub const ClientType = if (builtin.is_test) mock_client.MockClient else http_client.HTTPClient;
+pub const ClientOptionsType = if (builtin.is_test) mock_client.MockClientOptions else http_client.HTTPClientOptions;
 
-    var body = std.Io.Writer.Allocating.init(self.allocator);
-    defer body.deinit();
+pub const Client = struct {
+    client: ClientType,
 
-    const url = try std.fmt.allocPrint(self.allocator, format, args);
-    defer self.allocator.free(url);
-
-    const uri = try std.Uri.parse(url);
-
-    const clientResponse = try self.client.fetch(.{
-        .method = method,
-        .location = .{ .uri = uri },
-        .response_writer = &body.writer,
-        .payload = options.body,
-        .extra_headers = options.extra_headers,
-    });
-    try body.writer.flush();
-
-    const slice = try body.toOwnedSlice();
-
-    return .{
-        .body = slice,
-        .status = clientResponse.status,
-        .allocator = self.allocator,
-    };
-}
-
-pub fn get(self: *Client, comptime format: []const u8, args: anytype, options: HttpOptions) !response.Response {
-    return self.fetch(.GET, format, args, options);
-}
-
-pub fn post(self: *Client, comptime format: []const u8, args: anytype, options: HttpOptions) !response.Response {
-    var opts = options;
-
-    // On a POST requst, a body is required
-    if (opts.body == null) {
-        opts.body = &.{};
+    pub fn init(client: ClientType) @This() {
+        return .{ .client = client };
     }
 
-    return self.fetch(.POST, format, args, opts);
-}
+    /// The response needs to be `.deinit()` by the caller
+    pub fn fetch(self: *@This(), comptime method: std.http.Method, comptime format: []const u8, args: anytype, options: HTTPOptions) !response.Response {
+        return self.client.fetch(method, format, args, options);
+    }
 
-pub fn deinit(self: *Client) void {
-    self.client.deinit();
+    pub fn get(self: *@This(), comptime format: []const u8, args: anytype, options: HTTPOptions) !response.Response {
+        return self.client.get(format, args, options);
+    }
 
-    self.* = undefined;
-}
+    pub fn post(self: *@This(), comptime format: []const u8, args: anytype, options: HTTPOptions) !response.Response {
+        return self.client.post(format, args, options);
+    }
+
+    pub fn deinit(self: *@This()) void {
+        self.client.deinit();
+    }
+};

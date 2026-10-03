@@ -10,7 +10,16 @@ pub fn build(b: *std.Build) void {
         .target = target,
     });
 
-    const playday_vdf = b.dependency("playday_vdf", .{});
+    const use_local_deps = b.option(
+        bool,
+        "local-deps",
+        "Use local development dependencies",
+    ) orelse false;
+
+    const playday_vdf = if (use_local_deps)
+        b.dependency("playday_vdf_local", .{}).module("playday_vdf")
+    else
+        b.dependency("playday_vdf", .{}).module("playday_vdf");
 
     const http = b.addModule("http", .{
         .root_source_file = b.path("src/http/root.zig"),
@@ -60,7 +69,19 @@ pub fn build(b: *std.Build) void {
             .{ .name = "utils", .module = utils },
             .{ .name = "http", .module = http },
             .{ .name = "models", .module = models },
-            .{ .name = "playday_vdf", .module = playday_vdf.module("playday_vdf") },
+            .{ .name = "playday_vdf", .module = playday_vdf },
+        },
+    });
+
+    const gog = b.addModule("gog", .{
+        .root_source_file = b.path("src/libraries/gog/root.zig"),
+        .optimize = optimize,
+        .target = target,
+        .imports = &.{
+            .{ .name = "browser", .module = browser },
+            .{ .name = "http", .module = http },
+            .{ .name = "models", .module = models },
+            .{ .name = "utils", .module = utils },
         },
     });
 
@@ -70,6 +91,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .imports = &.{
             .{ .name = "steam", .module = steam },
+            .{ .name = "gog", .module = gog },
             .{ .name = "models", .module = models },
         },
     });
@@ -97,7 +119,7 @@ pub fn build(b: *std.Build) void {
             .{ .name = "libraries", .module = libraries },
             .{ .name = "metadata", .module = metadata },
             .{ .name = "utils", .module = utils },
-            .{ .name = "playday_vdf", .module = playday_vdf.module("playday_vdf") },
+            .{ .name = "playday_vdf", .module = playday_vdf },
         },
     });
 
@@ -115,12 +137,20 @@ pub fn build(b: *std.Build) void {
     ) orelse &.{};
 
     // Tests
-    const browser_tests = b.addTest(.{
-        .root_module = browser,
-        .filters = test_filter,
-    });
-    const run_tests = b.addRunArtifact(browser_tests);
+    const test_modules = .{
+        .{ .name = "browser", .module = browser },
+        .{ .name = "gog", .module = gog },
+    };
 
-    const test_step = b.step("test", "Run tests");
-    test_step.dependOn(&run_tests.step);
+    inline for (test_modules) |test_module| {
+        const tests = b.addTest(.{
+            .root_module = test_module.module,
+            .filters = test_filter,
+        });
+
+        const run_tests = b.addRunArtifact(tests);
+        const test_step = b.step("test-" ++ test_module.name, "Run tests for the " ++ test_module.name ++ " module");
+
+        test_step.dependOn(&run_tests.step);
+    }
 }

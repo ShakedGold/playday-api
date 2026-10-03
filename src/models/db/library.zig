@@ -56,8 +56,9 @@ pub fn clone(self: *const @This(), allocator: std.mem.Allocator) !@This() {
 // to a No-SQL db in the future to allow this flexibility
 // NOTE: currently because this IS still just json in the DB, we cannot save blobs of data
 // (such as images) in here since it will tank the performance while loading
-const Library = union(enum) {
+pub const Library = union(enum) {
     steam: SteamLibrary,
+    gog: GOGLibrary,
 
     pub fn clone(self: *const @This(), allocator: std.mem.Allocator) !@This() {
         return switch (self.*) {
@@ -95,5 +96,28 @@ const SteamLibrary = struct {
 
     pub fn run(self: *const @This(), io: std.Io, allocator: std.mem.Allocator) !void {
         try libraries.steam.local.SteamLocalType.run(io, allocator, self.appid);
+    }
+};
+
+const GOGLibrary = struct {
+    id: u32,
+
+    pub fn clone(self: *const @This(), allocator: std.mem.Allocator) !@This() {
+        _ = allocator; // autofix
+        return .{
+            .id = self.id,
+        };
+    }
+
+    pub fn deinit(self: *@This(), allocator: std.mem.Allocator) void {
+        _ = allocator; // autofix
+        self.* = undefined;
+    }
+
+    pub fn run(self: *const @This(), io: std.Io, allocator: std.mem.Allocator) !void {
+        _ = self; // autofix
+        _ = io; // autofix
+        _ = allocator; // autofix
+        @panic("Cannot run gog games yet...");
     }
 };
