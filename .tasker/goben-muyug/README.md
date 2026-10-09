@@ -5,6 +5,7 @@ kind: feature
 ---
 
 # Remove the chromium dependency
+
 In the GOG library implementation we use the chromium binary
 to login the user and get a code.
 
