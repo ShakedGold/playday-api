@@ -11,7 +11,7 @@ const DATABASE_NAME = "playday.db";
 pub fn getConnection(allocator: std.mem.Allocator, io: std.Io) !*fr.Session {
     const session = try allocator.create(fr.Session);
 
-    session.* = try fr.Session.open(fr.SQLite3, allocator, io, .{ .filename = DATABASE_NAME });
+    session.* = try fr.Session.open(fr.SQLite3, io, allocator, .{ .filename = DATABASE_NAME });
     return session;
 }
 
@@ -28,23 +28,24 @@ fn sqlQuery(allocator: std.mem.Allocator, structType: type, join_statements: any
 
     try sql.writer.print("SELECT ", .{});
 
-    const tables = @typeInfo(structType).@"struct".fields;
-    inline for (tables, 0..) |table, tableIndex| {
-        const fieldType = @typeInfo(table.type);
+    const table_names = @typeInfo(structType).@"struct".field_names;
+    const table_types = @typeInfo(structType).@"struct".field_types;
+    inline for (table_names, table_types, 0..) |table_name, table_type, tableIndex| {
+        const fieldType = @typeInfo(table_type);
 
-        const fields = fieldType.@"struct".fields;
-        inline for (fields, 0..) |tableField, fieldIndex| {
-            try sql.writer.print("{s}.{s} AS {s}__{s}", .{ table.name, tableField.name, table.name, tableField.name });
+        const field_names = fieldType.@"struct".field_names;
+        inline for (field_names, 0..) |field_name, fieldIndex| {
+            try sql.writer.print("{s}.{s} AS {s}__{s}", .{ table_name, field_name, table_name, field_name });
 
             // Printing ',' until the last field
-            if (tableIndex + 1 != tables.len or fieldIndex + 1 != fields.len) {
+            if (tableIndex + 1 != table_names.len or fieldIndex + 1 != field_names.len) {
                 try sql.writer.print(", ", .{});
             }
         }
     }
 
     // We take the first table in the struct fields as the main table to select from
-    try sql.writer.print(" FROM {s}", .{tables[0].name});
+    try sql.writer.print(" FROM {s}", .{table_names[0]});
 
     // Print the join statements
     inline for (join_statements) |statement| {
@@ -55,28 +56,31 @@ fn sqlQuery(allocator: std.mem.Allocator, structType: type, join_statements: any
 }
 
 fn JoinResultType(comptime structType: type) type {
-    const structFields = @typeInfo(structType).@"struct".fields;
+    const structFieldNames = @typeInfo(structType).@"struct".field_names;
+    const structFieldTypes = @typeInfo(structType).@"struct".field_types;
 
     var field_count: usize = 0;
 
-    inline for (structFields) |table| {
-        field_count += @typeInfo(table.type).@"struct".fields.len;
+    inline for (structFieldTypes) |tableType| {
+        field_count += @typeInfo(tableType).@"struct".field_names.len;
     }
 
     var names: [field_count][]const u8 = undefined;
     var types: [field_count]type = undefined;
-    var attrs: [field_count]std.builtin.Type.StructField.Attributes = undefined;
+    var attrs: [field_count]std.builtin.Type.Struct.FieldAttributes = undefined;
 
     var index: usize = 0;
 
-    inline for (structFields) |table| {
-        inline for (@typeInfo(table.type).@"struct".fields) |field| {
-            names[index] = table.name ++ "__" ++ field.name;
-            types[index] = field.type;
+    inline for (structFieldNames, structFieldTypes) |tableName, tableType| {
+        const info = @typeInfo(tableType).@"struct";
+
+        inline for (info.field_names, info.field_types, info.field_attrs) |fieldName, fieldType, fieldAttrs| {
+            names[index] = tableName ++ "__" ++ fieldName;
+            types[index] = fieldType;
 
             attrs[index] = .{
                 .@"comptime" = false,
-                .@"align" = field.alignment,
+                .@"align" = fieldAttrs.@"align",
                 .default_value_ptr = null,
             };
 
@@ -92,13 +96,14 @@ fn mapSqlResult(
     result: *ResultType,
     sqlResult: anytype,
 ) void {
-    inline for (@typeInfo(ResultType).@"struct".fields) |table| {
-        const TableType = table.type;
+    const info = @typeInfo(ResultType).@"struct";
+    inline for (info.field_names, info.field_types) |tableName, tableType| {
+        const TableType = tableType;
 
-        inline for (@typeInfo(TableType).@"struct".fields) |field| {
-            const sql_name = comptime table.name ++ "__" ++ field.name;
+        inline for (@typeInfo(TableType).@"struct".field_names) |fieldName| {
+            const sql_name = comptime tableName ++ "__" ++ fieldName;
 
-            @field(@field(result, table.name), field.name) =
+            @field(@field(result, tableName), fieldName) =
                 @field(sqlResult, sql_name);
         }
     }

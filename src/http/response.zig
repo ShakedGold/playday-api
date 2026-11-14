@@ -13,12 +13,9 @@ pub fn deinit(self: *Response) void {
 }
 
 pub fn statusName(status: std.http.Status) []const u8 {
-    const enum_info = @typeInfo(std.http.Status).@"enum";
-    const value = @intFromEnum(status);
-
-    inline for (enum_info.fields) |field| {
-        if (field.value == value) {
-            return field.name;
+    inline for (std.meta.tags(std.http.Status)) |field| {
+        if (field == status) {
+            return @tagName(field);
         }
     }
 

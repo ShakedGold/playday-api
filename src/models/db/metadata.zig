@@ -61,8 +61,5 @@ pub fn update(self: *@This(), io: std.Io, allocator: std.mem.Allocator) !void {
 
     try ensureTable(connection);
 
-    var query = try connection.query(@This()).where("id", self.id).update(self.*).prepare();
-    defer query.deinit();
-
-    try query.exec();
+    try connection.query(@This()).where("id", self.id).update().patch(self.*).exec();
 }

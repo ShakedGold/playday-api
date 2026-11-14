@@ -33,19 +33,16 @@
     // internet connectivity.
     .dependencies = .{
         .fridge = .{
-            .url = "git+https://github.com/cztomsik/fridge#7f4bb623af841305156d0e70a59bff2e1476bb74",
-            .hash = "fridge-0.9.5-3GyIimrGAQCY404B3oeRFFxV20lwVY_hWiWlTMhMsXR8",
+            .url = "git+https://github.com/cztomsik/fridge?ref=main#c114e0d9694dd25c037acff37ee97b45736486c9",
+            .hash = "fridge-0.9.5-3GyIiljZAQCPoV2CbTdOCHIv4lgnM2YRfha_kXDTN6SE",
         },
         .websocket = .{
-            .url = "git+https://github.com/karlseguin/websocket.zig#efa879736bd438bea8b86a91f220ba408de57273",
-            .hash = "websocket-0.1.0-ZPISdWoTBQA8iviFsepUZiKrmT-oEyc-BwfbVzYwu7LO",
+            .url = "git+https://github.com/karlseguin/websocket.zig?ref=master#f2b3bad6875595e8dd42c726e8e914885a8b0ba0",
+            .hash = "websocket-0.1.0-ZPISdbERBQCnk2-UDVSJlOss6POs_aAJR2nrccYJ1wZm",
         },
         .playday_vdf = .{
             .url = "git+https://github.com/ShakedGold/playday-vdf.git#b5761288de78e4f81ab5d2fc8dca3b5d2c2e2f18",
             .hash = "playday_vdf-0.0.0-seW6kA-dAADmGkiw-UotRLZrmIY7XgH6XsPCrz2Pdl27",
-        },
-        .playday_vdf_local = .{
-            .path = "../playday-vdf",
         },
     },
     .paths = .{
